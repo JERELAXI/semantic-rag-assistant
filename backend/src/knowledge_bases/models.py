@@ -7,7 +7,7 @@ from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.src.core.database import Base
+from src.core.database import Base
 
 
 class KnowledgeBase(Base):
@@ -36,13 +36,15 @@ class KnowledgeBase(Base):
     # Convenience back-references for polymorphic owner (joined via primaryjoin in auth/org models)
     owner_user: Mapped["User | None"] = relationship(  # noqa: F821
         "User",
-        primaryjoin="and_(KnowledgeBase.owner_id == foreign(User.id), KnowledgeBase.owner_type == 'user')",
+        primaryjoin="and_(KnowledgeBase.owner_id == User.id, KnowledgeBase.owner_type == 'user')",
+        foreign_keys="[KnowledgeBase.owner_id]",
         back_populates="knowledge_bases",
         viewonly=True,
     )
     owner_organization: Mapped["Organization | None"] = relationship(  # noqa: F821
         "Organization",
-        primaryjoin="and_(KnowledgeBase.owner_id == foreign(Organization.id), KnowledgeBase.owner_type == 'organization')",
+        primaryjoin="and_(KnowledgeBase.owner_id == Organization.id, KnowledgeBase.owner_type == 'organization')",
+        foreign_keys="[KnowledgeBase.owner_id]",
         back_populates="knowledge_bases",
         viewonly=True,
     )
