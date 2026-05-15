@@ -1,9 +1,31 @@
-from fastapi import FastAPI
+import src.core.base  # noqa: F401  — registers all models for SQLAlchemy relationship discovery
 
+from fastapi import Depends, FastAPI
+from fastapi.exception_handlers import http_exception_handler
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException
+
+from src.auth.router import router as auth_router
+from src.core.database import get_db
+from src.documents.router import router as documents_router
 
 app = FastAPI()
+
+app.add_exception_handler(HTTPException, http_exception_handler)
+
+app.include_router(auth_router)
 
 
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+
+@app.get("/health")
+async def health(db: AsyncSession = Depends(get_db)):
+    try:
+        await db.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}

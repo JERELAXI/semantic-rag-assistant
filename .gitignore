@@ -12,7 +12,7 @@ ENV/
 env/
 
 # Environment variables
-backend/.env
+.env
 .env
 
 # IDE
@@ -24,3 +24,7 @@ backend/.env
 # OS
 .DS_Store
 Thumbs.db
+
+
+CLAUDE.md
+docs

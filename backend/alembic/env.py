@@ -1,24 +1,19 @@
 import asyncio
+import os
+import sys
 from logging.config import fileConfig
+
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
 
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
 
-# ---------------------------------------------------------------------------
-# Import all models so their tables are registered on Base.metadata before
-# autogenerate runs. The order matters only for readability — SQLAlchemy
-# resolves FK dependencies automatically.
-# ---------------------------------------------------------------------------
-import src.auth.models  # noqa: F401  — User, RefreshToken
-import src.organizations.models  # noqa: F401  — Organization, OrganizationMember
-import src.knowledge_bases.models  # noqa: F401  — KnowledgeBase
-import src.documents.models  # noqa: F401  — Document, Chunk, Embedding
-import src.chat.models  # noqa: F401  — Session, Message, MessageCitation
+import src.core.base  # noqa: F401  — registers all feature models on Base.metadata
 
-from backend.src.core.config import settings
-from backend.src.core.database import Base
+from src.core.config import settings
+from src.core.database import Base
 
 
 # ---------------------------------------------------------------------------

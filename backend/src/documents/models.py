@@ -8,7 +8,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.src.core.database import Base
+from src.core.database import Base
 
 # Dimension must match the embedding model configured in Settings.embedding_model
 EMBEDDING_DIM = 1536
