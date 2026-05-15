@@ -17,8 +17,8 @@ import src.knowledge_bases.models  # noqa: F401  — KnowledgeBase
 import src.documents.models  # noqa: F401  — Document, Chunk, Embedding
 import src.chat.models  # noqa: F401  — Session, Message, MessageCitation
 
-from backend.src.core.config import settings
-from backend.src.core.database import Base
+from src.core.config import settings
+from src.core.database import Base
 
 
 # ---------------------------------------------------------------------------
