@@ -2,10 +2,11 @@
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import User
+from src.core.config import settings
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
 from src.documents.processing import process_document
@@ -37,7 +38,21 @@ async def upload(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DocumentResponse:
+    max_bytes = settings.max_file_size_mb * 1024 * 1024
+    header_size = file.size
+    if header_size is not None and header_size > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds maximum size of {settings.max_file_size_mb} MB",
+        )
     document = await upload_document(db, current_user, knowledge_base_id, title, file)
+    if document.file_size > max_bytes:
+        from src.documents.service import delete_document
+        await delete_document(db, document.id, current_user)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds maximum size of {settings.max_file_size_mb} MB",
+        )
     background_tasks.add_task(process_document, document.id)
     return await _to_response(db, document)
 
@@ -53,7 +68,7 @@ async def list_by_kb(
 
 
 @router.get("/{document_id}/status", response_model=DocumentStatus)
-async def status(
+async def get_status(
     document_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

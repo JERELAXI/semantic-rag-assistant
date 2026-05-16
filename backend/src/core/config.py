@@ -24,8 +24,14 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 64
 
+    # Upload limits
+    max_file_size_mb: int = 50
+
     # CORS — comma-separated origins, e.g. "http://localhost:3000,chrome-extension://abc"
     cors_origins: list[str] = Field(default_factory=list)
+
+    # Testing — set this in .env to point integration tests at a separate database
+    test_database_url: str | None = None
 
 
 settings = Settings()

@@ -8,7 +8,7 @@ import fitz
 from docx import Document as DocxDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import AsyncOpenAI
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -148,14 +148,31 @@ async def _run_pipeline(db: AsyncSession, document_id: uuid.UUID) -> None:
             vector=vector,
         ))
 
+    await db.flush()
+
+    await db.execute(
+        text("UPDATE chunks SET fts_vector = to_tsvector('english', content) WHERE document_id = :doc_id"),
+        {"doc_id": document_id},
+    )
+
     document.status = "ready"
     await db.commit()
 
 
 async def _set_failed(db: AsyncSession, document_id: uuid.UUID, error: str) -> None:
+    await db.rollback()
     result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
-    if document is not None:
-        document.status = "failed"
-        document.error_message = error[:2000]
-        await db.commit()
+    if document is None:
+        return
+
+    file_path = Path(document.file_path)
+    if file_path.exists():
+        file_path.unlink()
+        parent = file_path.parent
+        if parent.exists() and not any(parent.iterdir()):
+            parent.rmdir()
+
+    document.status = "failed"
+    document.error_message = error[:2000]
+    await db.commit()

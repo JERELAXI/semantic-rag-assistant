@@ -9,12 +9,17 @@ from starlette.exceptions import HTTPException
 from src.auth.router import router as auth_router
 from src.core.database import get_db
 from src.documents.router import router as documents_router
+from src.knowledge_bases.router import router as kb_router
+from src.organizations.router import router as organizations_router
 
 app = FastAPI()
 
 app.add_exception_handler(HTTPException, http_exception_handler)
 
 app.include_router(auth_router)
+app.include_router(organizations_router)
+app.include_router(kb_router)
+app.include_router(documents_router)
 
 
 @app.get("/")
