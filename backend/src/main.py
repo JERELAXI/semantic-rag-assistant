@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
 from src.auth.router import router as auth_router
+from src.chat.router import router as chat_router
 from src.core.database import get_db
 from src.documents.router import router as documents_router
 from src.knowledge_bases.router import router as kb_router
@@ -20,6 +21,7 @@ app.include_router(auth_router)
 app.include_router(organizations_router)
 app.include_router(kb_router)
 app.include_router(documents_router)
+app.include_router(chat_router)
 
 
 @app.get("/")
