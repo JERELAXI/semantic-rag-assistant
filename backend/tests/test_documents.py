@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
@@ -84,6 +86,29 @@ async def test_upload_duplicate_content_returns_409(
 
     second = await async_client.post("/documents/upload", **upload_kwargs)
     assert second.status_code == 409
+
+
+async def test_upload_to_other_users_kb_returns_404(
+    async_client: AsyncClient, created_kb: str
+) -> None:
+    second = await async_client.post(
+        "/auth/register",
+        json={
+            "email": f"user-{uuid.uuid4().hex[:8]}@test.com",
+            "password": "password123",
+            "display_name": "Other User",
+        },
+    )
+    assert second.status_code == 201
+    second_headers = {"Authorization": f"Bearer {second.json()['access_token']}"}
+
+    resp = await async_client.post(
+        "/documents/upload",
+        files={"file": _TXT_FILE},
+        data={"title": "Stolen Doc", "knowledge_base_id": created_kb},
+        headers=second_headers,
+    )
+    assert resp.status_code in {403, 404}
 
 
 async def test_upload_oversized_file_returns_413(

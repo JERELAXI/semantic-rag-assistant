@@ -66,3 +66,12 @@ async def test_refresh_token_returns_new_tokens(
     data = resp.json()
     assert "access_token" in data
     assert "refresh_token" in data
+
+
+async def test_register_duplicate_email_returns_409(async_client: AsyncClient) -> None:
+    email = _unique_email()
+    payload = {"email": email, "password": "password123", "display_name": "Alice"}
+    first = await async_client.post("/auth/register", json=payload)
+    assert first.status_code == 201
+    second = await async_client.post("/auth/register", json=payload)
+    assert second.status_code == 409
