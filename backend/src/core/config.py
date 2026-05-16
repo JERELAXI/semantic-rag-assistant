@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = Field(..., description="OpenAI API key for embeddings and chat completions")
     embedding_model: str = "text-embedding-3-small"
+    chat_model: str = "gpt-4o-mini"
 
     # Chunking
     chunk_size: int = 512
