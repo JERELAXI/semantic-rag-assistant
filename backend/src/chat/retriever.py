@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import uuid
 
-from openai import AsyncOpenAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.chat.schemas import SearchResult
-from src.core.config import settings
-
-_openai = AsyncOpenAI(api_key=settings.openai_api_key)
+from src.core.embeddings import embed_query
 
 _RRF_K = 60
-_CANDIDATE_POOL = 20
+_DEFAULT_CANDIDATE_POOL = 20
 
 _VECTOR_SQL = text("""
     SELECT c.id        AS chunk_id,
@@ -51,18 +48,11 @@ class HybridRetriever:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def embed_query(self, query: str) -> list[float]:
-        response = await _openai.embeddings.create(
-            input=[query],
-            model=settings.embedding_model,
-        )
-        return response.data[0].embedding
-
     async def vector_search(
         self,
         embedding: list[float],
         knowledge_base_id: uuid.UUID,
-        top_k: int = _CANDIDATE_POOL,
+        top_k: int = _DEFAULT_CANDIDATE_POOL,
     ) -> list[SearchResult]:
         result = await self._db.execute(
             _VECTOR_SQL,
@@ -85,7 +75,7 @@ class HybridRetriever:
         self,
         query: str,
         knowledge_base_id: uuid.UUID,
-        top_k: int = _CANDIDATE_POOL,
+        top_k: int = _DEFAULT_CANDIDATE_POOL,
     ) -> list[SearchResult]:
         result = await self._db.execute(
             _FTS_SQL,
@@ -109,11 +99,12 @@ class HybridRetriever:
         query: str,
         knowledge_base_id: uuid.UUID,
         top_k: int = 5,
+        candidate_pool: int = _DEFAULT_CANDIDATE_POOL,
     ) -> list[SearchResult]:
-        embedding = await self.embed_query(query)
+        embedding = await embed_query(query)
 
-        vector_results = await self.vector_search(embedding, knowledge_base_id, _CANDIDATE_POOL)
-        fts_results = await self.fts_search(query, knowledge_base_id, _CANDIDATE_POOL)
+        vector_results = await self.vector_search(embedding, knowledge_base_id, candidate_pool)
+        fts_results = await self.fts_search(query, knowledge_base_id, candidate_pool)
 
         return _rrf_fuse(vector_results, fts_results, top_k)
 
@@ -125,7 +116,7 @@ class HybridRetriever:
         top_k: int = 5,
     ) -> list[SearchResult]:
         if mode == "vector":
-            embedding = await self.embed_query(query)
+            embedding = await embed_query(query)
             return await self.vector_search(embedding, knowledge_base_id, top_k)
         if mode == "fts":
             return await self.fts_search(query, knowledge_base_id, top_k)

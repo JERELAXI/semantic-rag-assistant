@@ -11,10 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.chat.models import Message, Session
+from src.chat.reranker import rerank
 from src.chat.retriever import HybridRetriever
 from src.chat.schemas import CitationResponse, SearchResult
 from src.chat.service import get_recent_messages, save_citations, save_message
 from src.core.config import settings
+
+_RERANKER_CANDIDATE_POOL = 20
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -69,7 +72,13 @@ class RAGPipeline:
         history = await get_recent_messages(self._db, session_id, _MAX_HISTORY)
 
         retriever = HybridRetriever(self._db)
-        search_results = await retriever.hybrid_search(query, kb_id)
+        if settings.reranker_enabled:
+            search_results = await retriever.hybrid_search(
+                query, kb_id, top_k=_RERANKER_CANDIDATE_POOL, candidate_pool=_RERANKER_CANDIDATE_POOL,
+            )
+            search_results = await rerank(query, search_results)
+        else:
+            search_results = await retriever.hybrid_search(query, kb_id)
 
         messages = _build_messages(history, search_results)
 

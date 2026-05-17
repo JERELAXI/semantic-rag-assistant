@@ -8,10 +8,10 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstr
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from src.core.config import settings
 from src.core.database import Base
 
-# Dimension must match the embedding model configured in Settings.embedding_model
-EMBEDDING_DIM = 1536
+EMBEDDING_DIM = settings.embedding_dim
 
 
 class Document(Base):
