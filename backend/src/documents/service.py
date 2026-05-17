@@ -26,24 +26,19 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
 }
 
 
-async def upload_document(
+async def ingest_document_bytes(
     db: AsyncSession,
     user: User,
     knowledge_base_id: uuid.UUID,
     title: str,
-    file: UploadFile,
+    content_type: str,
+    data: bytes,
+    filename: str | None = None,
 ) -> Document:
     await check_kb_access(db, knowledge_base_id, user)
 
-    content_type = file.content_type or "application/octet-stream"
     if content_type not in ALLOWED_CONTENT_TYPES:
-        from fastapi import HTTPException, status
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}",
-        )
-
-    data = await file.read()
+        raise ValueError(f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}")
 
     content_hash = hashlib.sha256(data).hexdigest()
     existing = await db.execute(
@@ -59,8 +54,8 @@ async def upload_document(
     doc_dir = UPLOAD_DIR / str(doc_id)
     os.makedirs(doc_dir, exist_ok=True)
 
-    filename = file.filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
-    file_path = doc_dir / filename
+    safe_filename = filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    file_path = doc_dir / safe_filename
     file_path.write_bytes(data)
 
     document = Document(
@@ -77,6 +72,25 @@ async def upload_document(
     await db.commit()
     await db.refresh(document)
     return document
+
+
+async def upload_document(
+    db: AsyncSession,
+    user: User,
+    knowledge_base_id: uuid.UUID,
+    title: str,
+    file: UploadFile,
+) -> Document:
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}",
+        )
+    data = await file.read()
+    filename = file.filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    return await ingest_document_bytes(db, user, knowledge_base_id, title, content_type, data, filename)
 
 
 async def get_document(db: AsyncSession, document_id: uuid.UUID, user: User) -> Document:
