@@ -4,12 +4,14 @@ import src.mcp_server.tools  # noqa: F401  — registers @mcp.tool() decorators
 
 from fastapi import Depends, FastAPI
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
 from src.auth.router import router as auth_router
 from src.chat.router import router as chat_router
+from src.core.config import settings
 from src.core.database import get_db
 from src.documents.router import router as documents_router
 from src.knowledge_bases.router import router as kb_router
@@ -17,6 +19,15 @@ from src.mcp_server.server import create_mcp_app
 from src.organizations.router import router as organizations_router
 
 app = FastAPI()
+
+if settings.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.add_exception_handler(HTTPException, http_exception_handler)
 
