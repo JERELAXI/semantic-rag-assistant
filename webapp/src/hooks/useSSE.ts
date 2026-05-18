@@ -6,13 +6,12 @@ export interface CitationsEvent { citations: Citation[] }
 export interface DoneEvent      { done: true }
 export type SSEEvent = TokenEvent | CitationsEvent | DoneEvent;
 
+// Matches backend CitationResponse schema exactly
 export interface Citation {
   chunk_id: string;
-  content: string;
-  score: number;
-  document_id: string;
   document_title: string;
-  metadata: Record<string, unknown>;
+  content_excerpt: string;
+  relevance_score: number;
 }
 
 /**
