@@ -7,19 +7,15 @@ from pathlib import Path
 import fitz
 from docx import Document as DocxDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import AsyncOpenAI
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.database import AsyncSessionLocal
+from src.core.embeddings import embed_texts, embedding_model_name
 from src.documents.models import Chunk, Document, Embedding, EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
-
-EMBEDDING_BATCH_SIZE = 2048
-
-_openai = AsyncOpenAI(api_key=settings.openai_api_key)
 
 
 def _parse_pdf(file_path: str) -> list[dict]:
@@ -85,18 +81,6 @@ def _split_sections(sections: list[dict]) -> list[dict]:
     return chunks
 
 
-async def _embed_texts(texts: list[str]) -> list[list[float]]:
-    all_vectors: list[list[float]] = []
-    for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-        batch = texts[i : i + EMBEDDING_BATCH_SIZE]
-        response = await _openai.embeddings.create(
-            input=batch,
-            model=settings.embedding_model,
-        )
-        all_vectors.extend([item.embedding for item in response.data])
-    return all_vectors
-
-
 async def process_document(document_id: uuid.UUID) -> None:
     async with AsyncSessionLocal() as db:
         try:
@@ -126,7 +110,7 @@ async def _run_pipeline(db: AsyncSession, document_id: uuid.UUID) -> None:
         raise ValueError("Chunking produced no chunks")
 
     texts = [c["text"] for c in chunk_dicts]
-    vectors = await _embed_texts(texts)
+    vectors = await embed_texts(texts)
 
     chunks: list[Chunk] = []
     for idx, (chunk_dict, vector) in enumerate(zip(chunk_dicts, vectors)):
@@ -144,18 +128,35 @@ async def _run_pipeline(db: AsyncSession, document_id: uuid.UUID) -> None:
     for chunk, vector in zip(chunks, vectors):
         db.add(Embedding(
             chunk_id=chunk.id,
-            model=settings.embedding_model,
+            model=embedding_model_name,
             vector=vector,
         ))
+
+    await db.flush()
+
+    await db.execute(
+        text("UPDATE chunks SET fts_vector = to_tsvector('english', content) WHERE document_id = :doc_id"),
+        {"doc_id": document_id},
+    )
 
     document.status = "ready"
     await db.commit()
 
 
 async def _set_failed(db: AsyncSession, document_id: uuid.UUID, error: str) -> None:
+    await db.rollback()
     result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
-    if document is not None:
-        document.status = "failed"
-        document.error_message = error[:2000]
-        await db.commit()
+    if document is None:
+        return
+
+    file_path = Path(document.file_path)
+    if file_path.exists():
+        file_path.unlink()
+        parent = file_path.parent
+        if parent.exists() and not any(parent.iterdir()):
+            parent.rmdir()
+
+    document.status = "failed"
+    document.error_message = error[:2000]
+    await db.commit()

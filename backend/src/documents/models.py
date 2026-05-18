@@ -4,18 +4,21 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from src.core.config import settings
 from src.core.database import Base
 
-# Dimension must match the embedding model configured in Settings.embedding_model
-EMBEDDING_DIM = 1536
+EMBEDDING_DIM = settings.embedding_dim
 
 
 class Document(Base):
     __tablename__ = "documents"
+    __table_args__ = (
+        UniqueConstraint("knowledge_base_id", "content_hash", name="uq_kb_content_hash"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     knowledge_base_id: Mapped[uuid.UUID] = mapped_column(
@@ -25,6 +28,7 @@ class Document(Base):
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     # uploading → processing → ready → failed
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploading", index=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -52,6 +56,7 @@ class Chunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     # Arbitrary metadata: page number, section title, token count, etc.
     chunk_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    fts_vector = mapped_column(TSVECTOR, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     document: Mapped["Document"] = relationship("Document", back_populates="chunks")

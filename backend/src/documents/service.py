@@ -1,5 +1,6 @@
 """Document business logic: upload file to disk, persist metadata, trigger background processing."""
 
+import hashlib
 import os
 import uuid
 from pathlib import Path
@@ -11,10 +12,9 @@ from sqlalchemy.orm import selectinload
 
 from src.auth.models import User
 from src.core.config import settings
-from src.core.exceptions import NotFoundError
+from src.core.exceptions import ConflictError, NotFoundError
 from src.documents.models import Chunk, Document
-from src.knowledge_bases.models import KnowledgeBase
-from src.organizations.models import OrganizationMember
+from src.knowledge_bases.service import check_kb_access
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 
@@ -26,55 +26,36 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
 }
 
 
-async def _check_kb_access(db: AsyncSession, knowledge_base_id: uuid.UUID, user: User) -> KnowledgeBase:
-    result = await db.execute(
-        select(KnowledgeBase).where(KnowledgeBase.id == knowledge_base_id)
-    )
-    kb = result.scalar_one_or_none()
-    if kb is None:
-        raise NotFoundError("Knowledge base not found")
-
-    if kb.owner_type == "user" and kb.owner_id == user.id:
-        return kb
-
-    if kb.owner_type == "organization":
-        member = await db.execute(
-            select(OrganizationMember).where(
-                OrganizationMember.organization_id == kb.owner_id,
-                OrganizationMember.user_id == user.id,
-            )
-        )
-        if member.scalar_one_or_none() is not None:
-            return kb
-
-    raise NotFoundError("Knowledge base not found")
-
-
-async def upload_document(
+async def ingest_document_bytes(
     db: AsyncSession,
     user: User,
     knowledge_base_id: uuid.UUID,
     title: str,
-    file: UploadFile,
+    content_type: str,
+    data: bytes,
+    filename: str | None = None,
 ) -> Document:
-    await _check_kb_access(db, knowledge_base_id, user)
+    await check_kb_access(db, knowledge_base_id, user)
 
-    content_type = file.content_type or "application/octet-stream"
     if content_type not in ALLOWED_CONTENT_TYPES:
-        from fastapi import HTTPException, status
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}",
+        raise ValueError(f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}")
+
+    content_hash = hashlib.sha256(data).hexdigest()
+    existing = await db.execute(
+        select(Document.id).where(
+            Document.knowledge_base_id == knowledge_base_id,
+            Document.content_hash == content_hash,
         )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise ConflictError("A document with identical content already exists in this knowledge base")
 
     doc_id = uuid.uuid4()
     doc_dir = UPLOAD_DIR / str(doc_id)
     os.makedirs(doc_dir, exist_ok=True)
 
-    filename = file.filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
-    file_path = doc_dir / filename
-
-    data = await file.read()
+    safe_filename = filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    file_path = doc_dir / safe_filename
     file_path.write_bytes(data)
 
     document = Document(
@@ -84,12 +65,32 @@ async def upload_document(
         file_path=str(file_path),
         content_type=content_type,
         file_size=len(data),
+        content_hash=content_hash,
         status="uploading",
     )
     db.add(document)
     await db.commit()
     await db.refresh(document)
     return document
+
+
+async def upload_document(
+    db: AsyncSession,
+    user: User,
+    knowledge_base_id: uuid.UUID,
+    title: str,
+    file: UploadFile,
+) -> Document:
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}",
+        )
+    data = await file.read()
+    filename = file.filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    return await ingest_document_bytes(db, user, knowledge_base_id, title, content_type, data, filename)
 
 
 async def get_document(db: AsyncSession, document_id: uuid.UUID, user: User) -> Document:
@@ -102,12 +103,12 @@ async def get_document(db: AsyncSession, document_id: uuid.UUID, user: User) -> 
     if document is None:
         raise NotFoundError("Document not found")
 
-    await _check_kb_access(db, document.knowledge_base_id, user)
+    await check_kb_access(db, document.knowledge_base_id, user)
     return document
 
 
 async def list_documents(db: AsyncSession, knowledge_base_id: uuid.UUID, user: User) -> list[Document]:
-    await _check_kb_access(db, knowledge_base_id, user)
+    await check_kb_access(db, knowledge_base_id, user)
 
     result = await db.execute(
         select(Document)
