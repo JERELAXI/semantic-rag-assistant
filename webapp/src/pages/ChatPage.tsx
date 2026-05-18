@@ -24,7 +24,7 @@ export function ChatPage() {
   const [streamingCitations, setStreamingCitations] = useState<CitationResponse[]>([]);
   const [streaming, setStreaming] = useState(false);
 
-  const [activeCitation, setActiveCitation] = useState<{ citation: CitationResponse; index: number } | null>(null);
+  const [activeCitation, setActiveCitation] = useState<{ citation: CitationResponse; index: number; messageId: string } | null>(null);
   const [error, setError] = useState('');
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
@@ -134,8 +134,12 @@ export function ChatPage() {
     }
   }
 
-  function handleCitationClick(citation: CitationResponse, index: number) {
-    setActiveCitation((prev) => (prev?.index === index ? null : { citation, index }));
+  function handleCitationClick(citation: CitationResponse, index: number, messageId: string) {
+    setActiveCitation((prev) =>
+      prev?.index === index && prev?.messageId === messageId
+        ? null
+        : { citation, index, messageId },
+    );
   }
 
   const activeKb = kbs.find((kb) => kb.id === selectedKbId);
@@ -288,8 +292,10 @@ export function ChatPage() {
                   role={msg.role}
                   content={msg.content}
                   citations={msg.citations}
-                  onCitationClick={handleCitationClick}
-                  activeCitationIndex={activeCitation?.index ?? null}
+                  onCitationClick={(cit, idx) => handleCitationClick(cit, idx, msg.id)}
+                  activeCitationIndex={
+                    activeCitation?.messageId === msg.id ? activeCitation.index : null
+                  }
                 />
               ))}
 
@@ -300,8 +306,10 @@ export function ChatPage() {
                   content={streamingContent}
                   citations={streamingCitations}
                   streaming={true}
-                  onCitationClick={handleCitationClick}
-                  activeCitationIndex={activeCitation?.index ?? null}
+                  onCitationClick={(cit, idx) => handleCitationClick(cit, idx, 'streaming')}
+                  activeCitationIndex={
+                    activeCitation?.messageId === 'streaming' ? activeCitation.index : null
+                  }
                 />
               )}
 
