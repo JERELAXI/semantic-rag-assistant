@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Semantic RAG Assistant",
+  "version": "1.0.0",
+  "description": "Chat with your knowledge bases while browsing",
+  "permissions": ["sidePanel", "activeTab", "storage"],
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "action": {
+    "default_title": "Open Semantic RAG"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

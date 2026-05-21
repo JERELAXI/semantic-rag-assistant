@@ -1,11 +1,14 @@
 {
   "name": "extension",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build --mode background && vite build --mode content",
+    "build:sidepanel": "vite build",
+    "build:background": "vite build --mode background",
+    "build:content": "vite build --mode content",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -15,6 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/chrome": "^0.0.320",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

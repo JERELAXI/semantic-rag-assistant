@@ -1,7 +1,10 @@
-"""Document routes: POST /upload, GET /kb/{kb_id}, GET /{id}/status, GET /{id}, DELETE /{id}."""
+"""Document routes: POST /upload, POST /ingest-url, GET /kb/{kb_id}, GET /{id}/status, GET /{id}, DELETE /{id}."""
 
 import uuid
+from pathlib import PurePosixPath
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,8 +13,16 @@ from src.core.config import settings
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
 from src.documents.processing import process_document
-from src.documents.schemas import DocumentResponse, DocumentStatus
-from src.documents.service import delete_document, get_chunk_count, get_document, list_documents, upload_document
+from src.documents.schemas import DocumentResponse, DocumentStatus, IngestUrlRequest
+from src.documents.service import (
+    ALLOWED_CONTENT_TYPES,
+    delete_document,
+    get_chunk_count,
+    get_document,
+    ingest_document_bytes,
+    list_documents,
+    upload_document,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -53,6 +64,68 @@ async def upload(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File exceeds maximum size of {settings.max_file_size_mb} MB",
         )
+    background_tasks.add_task(process_document, document.id)
+    return await _to_response(db, document)
+
+
+_EXT_TO_CONTENT_TYPE: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+}
+
+
+@router.post("/ingest-url", response_model=DocumentResponse, status_code=201)
+async def ingest_url(
+    body: IngestUrlRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DocumentResponse:
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(body.url)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Failed to download URL (HTTP {e.response.status_code}). "
+                   "Make sure the file is publicly accessible or try downloading and uploading manually.",
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not reach URL: {e}",
+        )
+
+    # Detect content type from response header, strip charset/params
+    content_type = response.headers.get("content-type", "").split(";")[0].strip()
+
+    # Fall back to URL extension when header is absent or generic
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        ext = PurePosixPath(urlparse(str(response.url)).path).suffix.lower()
+        content_type = _EXT_TO_CONTENT_TYPE.get(ext, content_type)
+
+    # Google Docs text export always produces plain text regardless of header
+    if "docs.google.com" in str(body.url) and "format=txt" in str(body.url):
+        content_type = "text/plain"
+
+    max_bytes = settings.max_file_size_mb * 1024 * 1024
+    if len(response.content) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Downloaded file exceeds maximum size of {settings.max_file_size_mb} MB",
+        )
+
+    try:
+        document = await ingest_document_bytes(
+            db, current_user, body.knowledge_base_id,
+            body.title, content_type, response.content,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
     background_tasks.add_task(process_document, document.id)
     return await _to_response(db, document)
 

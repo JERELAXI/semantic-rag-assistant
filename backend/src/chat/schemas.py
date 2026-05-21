@@ -23,6 +23,9 @@ class SearchResult(BaseModel):
     document_id: uuid.UUID
     document_title: str
     metadata: dict
+    # Cosine similarity from vector search (0-1). None when the chunk came only from FTS.
+    # Used for user-facing relevance display; `score` after RRF fusion is not meaningful as a percentage.
+    vector_score: float | None = None
 
 
 # ── Sessions ────────────────────────────────────────────────────────────────
@@ -46,6 +49,8 @@ class SessionResponse(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=10000)
+    search_mode: Literal["vector", "fts", "hybrid"] = "hybrid"
+    top_k: int = Field(5, ge=1, le=50)
 
 
 class CitationResponse(BaseModel):
