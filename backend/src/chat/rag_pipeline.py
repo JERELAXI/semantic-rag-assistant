@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -24,6 +25,8 @@ _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 _MAX_HISTORY = 20
 _CONTENT_EXCERPT_LEN = 200
 
+_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
+
 _SYSTEM_PROMPT = """\
 You are a retrieval-grounded assistant. You answer questions about the user's documents \
 using ONLY the context chunks provided below.
@@ -32,16 +35,47 @@ Strict rules:
 1. Answer ONLY based on the provided context. Do not use your general knowledge, \
 training data, or outside information — even if you are confident it is correct.
 2. If the context does not contain enough information to answer the question, respond \
-with exactly: "I don't have enough information in the loaded documents to answer this \
-question." Do not attempt a partial or speculative answer.
+with a brief refusal in the same language as the user's question (in English: "I don't \
+have enough information in the loaded documents to answer this question."). Do not \
+attempt a partial or speculative answer.
 3. Always cite your sources using [1], [2], etc. — the numbers correspond to the [N] \
 labels in the context section. Every factual claim must have a citation. If a sentence \
 draws on multiple chunks, cite all of them, e.g. [1][3].
 4. Keep answers concise and directly relevant to the question. Do not pad with general \
 background, definitions, or commentary that is not asked for.
+5. Answer in the same language as the user's question. The context may be in any \
+language — use it regardless of language, translating from the context as needed. A \
+question in Ukrainian is answered in Ukrainian even if the context is in English, and \
+vice versa.
 
 Context:
 {context}"""
+
+
+def _filter_and_renumber(
+    response_text: str, search_results: list[SearchResult]
+) -> tuple[str, list[SearchResult]]:
+    """Keep only citations the LLM actually used; renumber sequentially by first appearance.
+
+    Returns (rewritten_text, filtered_results). Orphan citation markers (referencing
+    indices outside the retrieved range) are stripped from the text.
+    """
+    n_results = len(search_results)
+    # Map old citation number → new sequential number, ordered by first appearance in text.
+    remap: dict[int, int] = {}
+    for match in _CITATION_PATTERN.finditer(response_text):
+        old = int(match.group(1))
+        if 1 <= old <= n_results and old not in remap:
+            remap[old] = len(remap) + 1
+
+    def _replace(match: re.Match[str]) -> str:
+        old = int(match.group(1))
+        return f"[{remap[old]}]" if old in remap else ""
+
+    rewritten = _CITATION_PATTERN.sub(_replace, response_text)
+    # filtered_results in new-numbering order
+    filtered = [search_results[old - 1] for old, _ in sorted(remap.items(), key=lambda kv: kv[1])]
+    return rewritten, filtered
 
 
 def _format_context(results: list[SearchResult]) -> str:
@@ -103,20 +137,26 @@ class RAGPipeline:
                 assistant_content += delta.content
                 yield _sse({"token": delta.content})
 
-        msg = await save_message(self._db, session_id, "assistant", assistant_content)
-        await save_citations(self._db, msg.id, search_results)
+        # Drop chunks the LLM didn't actually cite, renumber sequentially.
+        # `final_content` is sent on `done` so frontends can swap in the renumbered text live.
+        final_content, cited_results = _filter_and_renumber(assistant_content, search_results)
+
+        msg = await save_message(self._db, session_id, "assistant", final_content)
+        await save_citations(self._db, msg.id, cited_results)
 
         citations = [
             CitationResponse(
                 chunk_id=r.chunk_id,
                 document_title=r.document_title,
                 content_excerpt=r.content[:_CONTENT_EXCERPT_LEN],
-                relevance_score=r.score,
+                # Show pre-fusion vector cosine similarity (e.g. 0.58 → "58% match").
+                # Fall back to `score` for FTS-only chunks where no vector similarity exists.
+                relevance_score=r.vector_score if r.vector_score is not None else r.score,
             )
-            for r in search_results
+            for r in cited_results
         ]
         yield _sse({"citations": [c.model_dump(mode="json") for c in citations]})
-        yield _sse({"done": True})
+        yield _sse({"done": True, "final_content": final_content})
 
     async def _session_kb(self, session_id: uuid.UUID) -> uuid.UUID:
         result = await self._db.execute(

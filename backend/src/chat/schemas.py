@@ -23,6 +23,9 @@ class SearchResult(BaseModel):
     document_id: uuid.UUID
     document_title: str
     metadata: dict
+    # Cosine similarity from vector search (0-1). None when the chunk came only from FTS.
+    # Used for user-facing relevance display; `score` after RRF fusion is not meaningful as a percentage.
+    vector_score: float | None = None
 
 
 # ── Sessions ────────────────────────────────────────────────────────────────

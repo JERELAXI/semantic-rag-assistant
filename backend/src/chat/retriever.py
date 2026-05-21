@@ -79,6 +79,7 @@ class HybridRetriever:
                 chunk_id=row["chunk_id"],
                 content=row["content"],
                 score=1 - float(row["distance"]),
+                vector_score=1 - float(row["distance"]),
                 document_id=row["document_id"],
                 document_title=row["document_title"],
                 metadata=row["metadata"] or {},
@@ -149,6 +150,9 @@ def _rrf_fuse(
 ) -> list[SearchResult]:
     scores: dict[uuid.UUID, float] = {}
     best: dict[uuid.UUID, SearchResult] = {}
+    # Preserve the cosine similarity from vector_results so the UI can show a meaningful percentage
+    # even after the fused `score` becomes a small RRF value.
+    vector_scores: dict[uuid.UUID, float] = {r.chunk_id: r.score for r in vector_results}
 
     for rank, result in enumerate(vector_results, start=1):
         scores[result.chunk_id] = scores.get(result.chunk_id, 0.0) + 1.0 / (_RRF_K + rank)
@@ -161,6 +165,9 @@ def _rrf_fuse(
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
 
     return [
-        best[chunk_id].model_copy(update={"score": fused_score})
+        best[chunk_id].model_copy(update={
+            "score": fused_score,
+            "vector_score": vector_scores.get(chunk_id),
+        })
         for chunk_id, fused_score in ranked
     ]
