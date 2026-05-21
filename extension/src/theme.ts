@@ -1,0 +1,56 @@
+export const darkTokens = {
+  bg: '#161618',
+  surface: '#1E1E22',
+  surfaceHover: '#26262B',
+  border: '#2C2C32',
+  borderSubtle: '#232328',
+  text: '#E4E4DC',
+  textSecondary: '#9C9C92',
+  textTertiary: '#6B6B63',
+  accent: '#6ACD8E',
+  accentSoft: '#6ACD8E14',
+  accentBorder: '#6ACD8E30',
+  userBubble: '#26262B',
+  citBg: '#6ACD8E18',
+  citText: '#6ACD8E',
+  citHover: '#6ACD8E28',
+  inputBg: '#1E1E22',
+  inputBorder: '#2C2C32',
+  popupBg: '#1E1E22',
+  popupShadow: '0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2)',
+  scrollThumb: '#3C3C42',
+  skeleton: '#2C2C32',
+  danger: '#E5534B',
+  dangerSoft: '#E5534B18',
+} as const
+
+export const lightTokens = {
+  bg: '#FAFAF8',
+  surface: '#FFFFFF',
+  surfaceHover: '#F5F5F3',
+  border: '#E8E8E4',
+  borderSubtle: '#F0F0EC',
+  text: '#1A1A18',
+  textSecondary: '#6B6B63',
+  textTertiary: '#9C9C92',
+  accent: '#2D6A4F',
+  accentSoft: '#2D6A4F14',
+  accentBorder: '#2D6A4F30',
+  userBubble: '#F0F0EC',
+  citBg: '#2D6A4F18',
+  citText: '#2D6A4F',
+  citHover: '#2D6A4F28',
+  inputBg: '#FFFFFF',
+  inputBorder: '#E8E8E4',
+  popupBg: '#FFFFFF',
+  popupShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
+  scrollThumb: '#D4D4CC',
+  skeleton: '#E8E8E4',
+  danger: '#D32F2F',
+  dangerSoft: '#D32F2F10',
+} as const
+
+export type Tokens = { readonly [K in keyof typeof darkTokens]: string }
+
+export const SANS = "'IBM Plex Sans', system-ui, sans-serif"
+export const MONO = "'IBM Plex Mono', 'SF Mono', monospace"
