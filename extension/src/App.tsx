@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { darkTokens, lightTokens, type Tokens, SANS, MONO } from './theme'
 import {
   login, storeTokens, clearTokens, isLoggedIn,
-  listKBs, createKB, createSession, uploadPageText,
+  listKBs, createKB, createSession, uploadPageText, ingestUrl,
   type KBItem,
 } from './api'
 import { streamMessage, type Citation } from './stream'
@@ -32,7 +32,8 @@ interface Message {
 }
 
 interface IngestData {
-  text: string
+  text?: string
+  fileUrl?: string
   title: string
   url: string
 }
@@ -936,17 +937,23 @@ function IngestConfirm({
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
 
+  const isUrlIngest = !!data.fileUrl
+
   const handleConfirm = async () => {
     setLoading(true)
     setError('')
     try {
       const kb = await findOrCreateBrowserPagesKB()
-      await uploadPageText(kb.id, data.title, data.text)
+      if (isUrlIngest) {
+        await ingestUrl(kb.id, data.title, data.fileUrl!)
+      } else {
+        await uploadPageText(kb.id, data.title, data.text!)
+      }
       setDone(true)
       setTimeout(() => onSuccess(kb.id), 1400)
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'Session expired') { onSessionExpired(); return }
-      setError(e instanceof Error ? e.message : 'Upload failed')
+      setError(e instanceof Error ? e.message : 'Failed — file may require login or download permission. Try downloading and uploading manually via the webapp.')
     } finally {
       setLoading(false)
     }
@@ -981,12 +988,25 @@ function IngestConfirm({
         <div style={{ fontSize: 11, color: t.textTertiary, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 8 }}>
           {data.url}
         </div>
-        <div style={{ fontSize: 12, color: t.textSecondary, fontFamily: SANS, lineHeight: 1.55 }}>
-          {data.text.slice(0, 180).trim()}{data.text.length > 180 ? '…' : ''}
-        </div>
-        <div style={{ fontSize: 10.5, color: t.textTertiary, fontFamily: MONO, marginTop: 6 }}>
-          {(data.text.length / 1000).toFixed(1)} k chars
-        </div>
+        {data.text ? (
+          <>
+            <div style={{ fontSize: 12, color: t.textSecondary, fontFamily: SANS, lineHeight: 1.55 }}>
+              {data.text.slice(0, 180).trim()}{data.text.length > 180 ? '…' : ''}
+            </div>
+            <div style={{ fontSize: 10.5, color: t.textTertiary, fontFamily: MONO, marginTop: 6 }}>
+              {(data.text.length / 1000).toFixed(1)} k chars
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 11, color: t.textTertiary, fontFamily: MONO, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Will download from Google
+          </div>
+        )}
       </div>
 
       {/* Destination hint */}
@@ -1032,7 +1052,10 @@ function IngestConfirm({
               opacity: loading ? 0.65 : 1,
             }}
           >
-            {loading ? 'Adding…' : 'Add to KB'}
+            {loading
+              ? (isUrlIngest ? 'Downloading…' : 'Adding…')
+              : 'Add to KB'
+            }
           </button>
         </div>
       )}

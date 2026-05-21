@@ -126,6 +126,21 @@ export async function createSession(kbId: string): Promise<SessionItem> {
   return res.json()
 }
 
+// ── Document ingest from URL ──────────────────────────────────────────────
+
+export async function ingestUrl(kbId: string, title: string, url: string) {
+  const res = await apiFetch('/documents/ingest-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, title: title.slice(0, 255), knowledge_base_id: kbId }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? 'Ingest failed')
+  }
+  return res.json()
+}
+
 // ── Document upload (page text → .txt file) ───────────────────────────────
 
 export async function uploadPageText(kbId: string, title: string, text: string) {

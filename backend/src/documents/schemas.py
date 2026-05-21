@@ -11,6 +11,12 @@ class DocumentUpload(BaseModel):
     knowledge_base_id: uuid.UUID
 
 
+class IngestUrlRequest(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048)
+    title: str = Field(..., min_length=1, max_length=255)
+    knowledge_base_id: uuid.UUID
+
+
 class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 

@@ -13,32 +13,47 @@ const BLOCKED_HOSTS = new Set([
   'www.tiktok.com', 'tiktok.com',
 ])
 
-function isDocumentPage(): boolean {
+// Returns true if the URL is unconditionally a document (skip text-length check)
+function isAlwaysDocument(): boolean {
+  const { hostname, pathname } = window.location
+  if (hostname === 'docs.google.com') return true
+  if (hostname === 'drive.google.com' && pathname.startsWith('/viewer')) return true
+  return false
+}
+
+function isEligible(): boolean {
   const { protocol, hostname, pathname } = window.location
 
-  // Block browser-internal and extension pages
   if (protocol === 'chrome:' || protocol === 'chrome-extension:' || protocol === 'about:') return false
-
-  // Block known feed / non-document pages
   if (BLOCKED_HOSTS.has(hostname)) return false
+  if (hostname === 'www.google.com' && pathname.startsWith('/search')) return false
 
-  // Block Google search results pages
-  if (hostname.includes('google.') && pathname.startsWith('/search')) return false
+  if (isAlwaysDocument()) return true
 
-  // Require meaningful text volume
-  const bodyText = document.body.innerText
-  if (bodyText.length < 500) return false
+  return document.body.innerText.length > 500
+}
 
-  // Require at least 3 paragraphs with substantial text
-  const paragraphs = Array.from(document.querySelectorAll('p'))
-  const substantialParas = paragraphs.filter((p) => (p.innerText?.length ?? 0) > 100)
-  if (substantialParas.length < 3) return false
+// Returns a backend-downloadable URL for pages whose content can't be scraped via innerText
+function getFileUrl(): string | null {
+  const { hostname, pathname } = window.location
 
-  return true
+  // Google Docs: export as plain text
+  if (hostname === 'docs.google.com') {
+    const match = pathname.match(/\/document\/d\/([^/]+)/)
+    if (match) return `https://docs.google.com/document/d/${match[1]}/export?format=txt`
+  }
+
+  // Google Drive file viewer: direct download
+  if (hostname === 'drive.google.com') {
+    const match = pathname.match(/\/file\/d\/([^/]+)/)
+    if (match) return `https://drive.google.com/uc?export=download&id=${match[1]}`
+  }
+
+  return null
 }
 
 function injectButton(): void {
-  if (!isDocumentPage()) return
+  if (!isEligible()) return
   if (document.getElementById(BTN_ID)) return
 
   const btn = document.createElement('button')
@@ -75,15 +90,19 @@ function injectButton(): void {
   })
 
   btn.addEventListener('click', () => {
-    const text = document.body.innerText.slice(0, 50_000)
     const title = document.title || window.location.hostname
     const url = window.location.href
+    const fileUrl = getFileUrl()
 
     btn.textContent = 'Sending…'
     btn.style.opacity = '0.75'
     btn.style.cursor = 'default'
 
-    chrome.runtime.sendMessage({ type: 'PAGE_TEXT', text, title, url }, (response) => {
+    const payload = fileUrl
+      ? { type: 'PAGE_TEXT', fileUrl, title, url }
+      : { type: 'PAGE_TEXT', text: document.body.innerText.slice(0, 50_000), title, url }
+
+    chrome.runtime.sendMessage(payload, (response) => {
       if (response?.ok) {
         btn.textContent = '✓ Sent to SidePanel'
         btn.style.background = '#4ade80'
@@ -105,8 +124,17 @@ function injectButton(): void {
   document.body.appendChild(btn)
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', injectButton)
-} else {
+// Initial attempt after 2 s to let async pages (Google Docs, SPAs) populate their DOM
+setTimeout(() => {
   injectButton()
-}
+
+  // If button wasn't injected yet (text still loading), poll every 3 s for up to 15 s
+  if (!document.getElementById(BTN_ID)) {
+    let elapsed = 0
+    const interval = setInterval(() => {
+      elapsed += 3000
+      injectButton()
+      if (document.getElementById(BTN_ID) || elapsed >= 15000) clearInterval(interval)
+    }, 3000)
+  }
+}, 2000)
