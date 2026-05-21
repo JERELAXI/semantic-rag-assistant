@@ -38,7 +38,9 @@ def _to_message_response(message: Message) -> MessageResponse:
         CitationResponse(
             chunk_id=c.chunk_id,
             document_title=c.chunk.document.filename,
-            content_excerpt=c.chunk.content[:200],
+            # Prefer the raw chunk text stored in metadata; falls back to `content` for
+            # chunks ingested before contextual chunking was enabled.
+            content_excerpt=(c.chunk.chunk_metadata.get("original_content") or c.chunk.content)[:200],
             relevance_score=c.score or 0.0,
         )
         for c in message.citations

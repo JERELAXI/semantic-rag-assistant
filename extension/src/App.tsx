@@ -295,12 +295,13 @@ function AppShell({
           accCitations = event.citations
           setStreamCitations(accCitations)
         } else if ('done' in event) {
+          const finalContent = event.final_content ?? accContent
           setStreamContent('')
           setStreamCitations([])
           setMessages((prev) => [...prev, {
             id: crypto.randomUUID(),
             role: 'assistant',
-            content: accContent,
+            content: finalContent,
             citations: accCitations,
           }])
         }

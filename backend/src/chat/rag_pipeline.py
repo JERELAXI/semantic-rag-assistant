@@ -148,7 +148,9 @@ class RAGPipeline:
             CitationResponse(
                 chunk_id=r.chunk_id,
                 document_title=r.document_title,
-                content_excerpt=r.content[:_CONTENT_EXCERPT_LEN],
+                # Show the raw chunk to the user — `r.content` may carry a "Context: ..."
+                # prefix added during contextual chunking; the user should never see that.
+                content_excerpt=(r.metadata.get("original_content") or r.content)[:_CONTENT_EXCERPT_LEN],
                 # Show pre-fusion vector cosine similarity (e.g. 0.58 → "58% match").
                 # Fall back to `score` for FTS-only chunks where no vector similarity exists.
                 relevance_score=r.vector_score if r.vector_score is not None else r.score,

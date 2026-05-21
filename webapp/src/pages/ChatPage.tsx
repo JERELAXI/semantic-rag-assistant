@@ -128,6 +128,7 @@ export function ChatPage() {
           accCitations = event.citations;
           setStreamingCitations(accCitations);
         } else if ('done' in event) {
+          const finalContent = event.final_content ?? accContent;
           setStreamingContent('');
           setStreamingCitations([]);
           setMessages((prev) => [
@@ -135,7 +136,7 @@ export function ChatPage() {
             {
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: accContent,
+              content: finalContent,
               created_at: new Date().toISOString(),
               citations: accCitations,
             },

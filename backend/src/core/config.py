@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 64
 
+    # RAG quality features (all independently toggleable)
+    contextual_chunking_enabled: bool = True
+    hyde_enabled: bool = True
+    query_expansion_enabled: bool = True
+
     # Upload limits
     max_file_size_mb: int = 50
 

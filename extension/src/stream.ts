@@ -9,7 +9,7 @@ export interface Citation {
   relevance_score: number
 }
 
-export type SSEEvent = { token: string } | { citations: Citation[] } | { done: true }
+export type SSEEvent = { token: string } | { citations: Citation[] } | { done: true; final_content?: string }
 
 export async function* streamMessage(
   sessionId: string,
