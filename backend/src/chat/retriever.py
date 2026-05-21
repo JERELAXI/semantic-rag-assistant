@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import text
@@ -12,6 +13,20 @@ from src.core.embeddings import embed_query
 
 _RRF_K = 60
 _DEFAULT_CANDIDATE_POOL = 20
+
+# Matches alphanumeric/underscore runs (Unicode-aware) — anything else becomes a separator.
+# Drops punctuation/operators that would break to_tsquery() syntax.
+_TSQUERY_TOKEN = re.compile(r"\w+", re.UNICODE)
+
+
+def _build_or_tsquery(query: str) -> str:
+    """Tokenize a free-form query into an OR tsquery expression, e.g. 'foo | bar | baz'.
+
+    Returns an empty string when no usable tokens remain — callers must short-circuit,
+    since to_tsquery('') raises a syntax error in PostgreSQL.
+    """
+    tokens = _TSQUERY_TOKEN.findall(query)
+    return " | ".join(tokens)
 
 _VECTOR_SQL = text("""
     SELECT c.id        AS chunk_id,
@@ -34,11 +49,11 @@ _FTS_SQL = text("""
            c.metadata,
            d.id         AS document_id,
            d.filename   AS document_title,
-           ts_rank(c.fts_vector, plainto_tsquery('simple', :query)) AS rank_score
+           ts_rank(c.fts_vector, to_tsquery('simple', :tsquery)) AS rank_score
       FROM chunks c
       JOIN documents d ON d.id = c.document_id
      WHERE d.knowledge_base_id = :kb_id
-       AND c.fts_vector @@ plainto_tsquery('simple', :query)
+       AND c.fts_vector @@ to_tsquery('simple', :tsquery)
      ORDER BY rank_score DESC
      LIMIT :top_k
 """)
@@ -77,9 +92,13 @@ class HybridRetriever:
         knowledge_base_id: uuid.UUID,
         top_k: int = _DEFAULT_CANDIDATE_POOL,
     ) -> list[SearchResult]:
+        tsquery = _build_or_tsquery(query)
+        if not tsquery:
+            return []
+
         result = await self._db.execute(
             _FTS_SQL,
-            {"query": query, "kb_id": knowledge_base_id, "top_k": top_k},
+            {"tsquery": tsquery, "kb_id": knowledge_base_id, "top_k": top_k},
         )
         rows = result.mappings().all()
         return [
