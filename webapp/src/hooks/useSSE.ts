@@ -28,11 +28,21 @@ export interface Citation {
  *     else if ('done' in event) finalize();
  *   }
  */
+export interface StreamChatOpts {
+  searchMode?: string;
+  topK?: number;
+}
+
 export async function* streamChat(
   sessionId: string,
   content: string,
+  opts?: StreamChatOpts,
 ): AsyncGenerator<SSEEvent, void, unknown> {
   const token = localStorage.getItem('access_token');
+
+  const body: Record<string, unknown> = { content };
+  if (opts?.searchMode) body.search_mode = opts.searchMode;
+  if (opts?.topK !== undefined) body.top_k = opts.topK;
 
   const response = await fetch(`${BASE_URL}/chat/sessions/${sessionId}/messages`, {
     method: 'POST',
@@ -41,7 +51,7 @@ export async function* streamChat(
       'Accept': 'text/event-stream',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

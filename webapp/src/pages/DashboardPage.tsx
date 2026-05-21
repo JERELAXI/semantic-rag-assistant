@@ -8,6 +8,7 @@ import { documentsApi } from '../api/documents';
 import { Modal } from '../components/UI/Modal';
 import { ConfirmDialog } from '../components/UI/ConfirmDialog';
 import { Skeleton } from '../components/UI/Skeleton';
+import { useToast } from '../contexts/ToastContext';
 
 interface KBCard extends KBResponse {
   docCount: number;
@@ -17,6 +18,7 @@ interface KBCard extends KBResponse {
 export function DashboardPage() {
   const t = useTheme();
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const [kbs, setKbs] = useState<KBCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +50,8 @@ export function DashboardPage() {
         }),
       );
       setKbs(cards);
+    } catch {
+      showToast('Failed to load knowledge bases', 'error');
     } finally {
       setLoading(false);
     }
@@ -62,9 +66,12 @@ export function DashboardPage() {
       setCreateOpen(false);
       setCreateName('');
       setCreateDesc('');
+      showToast('Knowledge base created');
       await loadKBs();
     } catch (e: any) {
-      setCreateError(e?.response?.data?.detail ?? 'Failed to create knowledge base');
+      const msg = e?.response?.data?.detail ?? 'Failed to create knowledge base';
+      setCreateError(msg);
+      showToast(msg, 'error');
     } finally {
       setCreating(false);
     }
@@ -72,7 +79,12 @@ export function DashboardPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
-    await kbApi.delete(deleteTarget.id);
+    try {
+      await kbApi.delete(deleteTarget.id);
+      showToast(`"${deleteTarget.name}" deleted`);
+    } catch {
+      showToast('Failed to delete knowledge base', 'error');
+    }
     setDeleteTarget(null);
     await loadKBs();
   }
@@ -98,7 +110,10 @@ export function DashboardPage() {
             padding: '9px 16px', borderRadius: 8, border: 'none',
             background: t.accent, color: '#fff',
             fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer',
+            transition: 'opacity 0.15s',
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
         >
           <Plus size={15} />
           New KB

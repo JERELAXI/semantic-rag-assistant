@@ -67,7 +67,11 @@ class RAGPipeline:
         self._db = db
 
     async def stream_response(
-        self, session_id: uuid.UUID, query: str
+        self,
+        session_id: uuid.UUID,
+        query: str,
+        search_mode: str = "hybrid",
+        top_k: int = 5,
     ) -> AsyncGenerator[str, None]:
         await save_message(self._db, session_id, "user", query)
 
@@ -77,12 +81,13 @@ class RAGPipeline:
 
         retriever = HybridRetriever(self._db)
         if settings.reranker_enabled:
-            search_results = await retriever.hybrid_search(
-                query, kb_id, top_k=_RERANKER_CANDIDATE_POOL, candidate_pool=_RERANKER_CANDIDATE_POOL,
+            search_results = await retriever.search(
+                query, kb_id, mode=search_mode, top_k=_RERANKER_CANDIDATE_POOL,
             )
             search_results = await rerank(query, search_results)
+            search_results = search_results[:top_k]
         else:
-            search_results = await retriever.hybrid_search(query, kb_id)
+            search_results = await retriever.search(query, kb_id, mode=search_mode, top_k=top_k)
 
         messages = _build_messages(history, search_results)
 

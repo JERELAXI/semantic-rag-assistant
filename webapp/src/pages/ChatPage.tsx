@@ -7,14 +7,19 @@ import { chatApi, type CitationResponse, type MessageResponse, type SessionRespo
 import { MessageBubble } from '../components/Chat/MessageBubble';
 import { InputBar } from '../components/Chat/InputBar';
 import { CitationPanel } from '../components/Chat/CitationPanel';
+import { Skeleton } from '../components/UI/Skeleton';
+import { useToast } from '../contexts/ToastContext';
+import { getSearchPrefs } from '../hooks/useSearchPrefs';
 import type { KBResponse } from '../api/knowledgeBases';
 
 export function ChatPage() {
   const t = useTheme();
+  const { showToast } = useToast();
 
   const [kbs, setKbs] = useState<KBResponse[]>([]);
   const [selectedKbId, setSelectedKbId] = useState('');
   const [allSessions, setAllSessions] = useState<SessionResponse[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<MessageResponse[]>([]);
@@ -25,37 +30,43 @@ export function ChatPage() {
   const [streaming, setStreaming] = useState(false);
 
   const [activeCitation, setActiveCitation] = useState<{ citation: CitationResponse; index: number; messageId: string } | null>(null);
-  const [error, setError] = useState('');
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load KBs and sessions on mount
+  // Read prefs once on mount — remounts when navigating back from Settings
+  const searchPrefs = getSearchPrefs();
+
   useEffect(() => {
-    kbApi.list().then(({ data }) => setKbs(data));
+    kbApi.list().then(({ data }) => setKbs(data)).catch(() => {});
     loadSessions();
   }, []);
 
-  // Load messages when active session changes
   useEffect(() => {
     if (!activeSessionId) { setMessages([]); return; }
     setLoadingMsgs(true);
     setActiveCitation(null);
     chatApi.getMessages(activeSessionId)
       .then(({ data }) => setMessages(data))
-      .catch(() => setError('Failed to load messages'))
+      .catch(() => showToast('Failed to load messages', 'error'))
       .finally(() => setLoadingMsgs(false));
   }, [activeSessionId]);
 
-  // Auto-scroll on new content
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, streamingContent]);
 
   async function loadSessions() {
-    const { data } = await chatApi.listSessions();
-    setAllSessions(data);
+    setLoadingSessions(true);
+    try {
+      const { data } = await chatApi.listSessions();
+      setAllSessions(data);
+    } catch {
+      showToast('Failed to load sessions', 'error');
+    } finally {
+      setLoadingSessions(false);
+    }
   }
 
   const sessions = allSessions
@@ -64,27 +75,33 @@ export function ChatPage() {
 
   async function handleNewChat() {
     if (!selectedKbId || streaming) return;
-    const { data: session } = await chatApi.createSession(selectedKbId);
-    setAllSessions((prev) => [session, ...prev]);
-    setActiveSessionId(session.id);
-    setMessages([]);
-    setActiveCitation(null);
-    setError('');
+    try {
+      const { data: session } = await chatApi.createSession(selectedKbId);
+      setAllSessions((prev) => [session, ...prev]);
+      setActiveSessionId(session.id);
+      setMessages([]);
+      setActiveCitation(null);
+    } catch {
+      showToast('Failed to create chat session', 'error');
+    }
   }
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: string) {
     e.stopPropagation();
-    await chatApi.deleteSession(sessionId);
-    setAllSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    if (activeSessionId === sessionId) {
-      setActiveSessionId(null);
-      setMessages([]);
+    try {
+      await chatApi.deleteSession(sessionId);
+      setAllSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(null);
+        setMessages([]);
+      }
+    } catch {
+      showToast('Failed to delete session', 'error');
     }
   }
 
   async function handleSend(content: string) {
     if (!activeSessionId || streaming) return;
-    setError('');
     setStreaming(true);
     setStreamingContent('');
     setStreamingCitations([]);
@@ -102,7 +119,8 @@ export function ChatPage() {
     let accCitations: CitationResponse[] = [];
 
     try {
-      for await (const event of chatApi.streamMessage(activeSessionId, content)) {
+      const { searchMode, topK } = getSearchPrefs();
+      for await (const event of chatApi.streamMessage(activeSessionId, content, { searchMode, topK })) {
         if ('token' in event) {
           accContent += event.token;
           setStreamingContent(accContent);
@@ -126,7 +144,7 @@ export function ChatPage() {
         }
       }
     } catch {
-      setError('Streaming failed — please try again.');
+      showToast('Streaming failed — please try again.', 'error');
       setStreamingContent('');
       setStreamingCitations([]);
     } finally {
@@ -143,7 +161,6 @@ export function ChatPage() {
   }
 
   const activeKb = kbs.find((kb) => kb.id === selectedKbId);
-  const isStreaming = streaming;
 
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -191,15 +208,15 @@ export function ChatPage() {
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.borderSubtle}` }}>
           <button
             onClick={handleNewChat}
-            disabled={!selectedKbId || isStreaming}
+            disabled={!selectedKbId || streaming}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '8px 0', borderRadius: 8, border: `1px solid ${t.accentBorder}`,
               background: !selectedKbId ? 'transparent' : t.accentSoft,
               color: !selectedKbId ? t.textTri : t.accent,
               fontSize: 13, fontWeight: 500, fontFamily: FONT,
-              cursor: !selectedKbId || isStreaming ? 'not-allowed' : 'pointer',
-              opacity: !selectedKbId || isStreaming ? 0.5 : 1,
+              cursor: !selectedKbId || streaming ? 'not-allowed' : 'pointer',
+              opacity: !selectedKbId || streaming ? 0.5 : 1,
               transition: 'all 0.15s',
             }}
           >
@@ -210,54 +227,64 @@ export function ChatPage() {
 
         {/* Session list */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {sessions.length === 0 && (
+          {loadingSessions ? (
+            <div style={{ padding: '12px 12px' }}>
+              {[1, 2, 3].map((i) => (
+                <div key={i} style={{ marginBottom: 14 }}>
+                  <Skeleton width="75%" height={12} style={{ marginBottom: 6 }} />
+                  <Skeleton width="45%" height={10} />
+                </div>
+              ))}
+            </div>
+          ) : sessions.length === 0 ? (
             <p style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, padding: '16px 12px', textAlign: 'center' }}>
               {selectedKbId ? 'No chats yet' : 'Select a KB to see chats'}
             </p>
-          )}
-          {sessions.map((s) => {
-            const isActive = s.id === activeSessionId;
-            const isHovered = hoveredSessionId === s.id;
-            return (
-              <div
-                key={s.id}
-                onClick={() => setActiveSessionId(s.id)}
-                onMouseEnter={() => setHoveredSessionId(s.id)}
-                onMouseLeave={() => setHoveredSessionId(null)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '9px 12px', cursor: 'pointer',
-                  background: isActive ? t.accentSoft : isHovered ? t.surfaceAlt : 'transparent',
-                  borderLeft: `2px solid ${isActive ? t.accent : 'transparent'}`,
-                  transition: 'background 0.1s',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{
-                    fontSize: 13, fontWeight: isActive ? 500 : 400,
-                    color: isActive ? t.accent : t.text, fontFamily: FONT,
-                    margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {s.title ?? 'Untitled chat'}
-                  </p>
-                  <p style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, margin: '2px 0 0' }}>
-                    {fmtDate(s.updated_at)}
-                  </p>
-                </div>
-                <button
-                  onClick={(e) => handleDeleteSession(e, s.id)}
+          ) : (
+            sessions.map((s) => {
+              const isActive = s.id === activeSessionId;
+              const isHovered = hoveredSessionId === s.id;
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => setActiveSessionId(s.id)}
+                  onMouseEnter={() => setHoveredSessionId(s.id)}
+                  onMouseLeave={() => setHoveredSessionId(null)}
                   style={{
-                    background: 'none', border: 'none', padding: 3,
-                    borderRadius: 5, cursor: 'pointer', color: t.textTri,
-                    opacity: isHovered ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
-                    display: 'flex', alignItems: 'center',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '9px 12px', cursor: 'pointer',
+                    background: isActive ? t.accentSoft : isHovered ? t.surfaceAlt : 'transparent',
+                    borderLeft: `2px solid ${isActive ? t.accent : 'transparent'}`,
+                    transition: 'background 0.1s',
                   }}
                 >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            );
-          })}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: 13, fontWeight: isActive ? 500 : 400,
+                      color: isActive ? t.accent : t.text, fontFamily: FONT,
+                      margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {s.title ?? 'Untitled chat'}
+                    </p>
+                    <p style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, margin: '2px 0 0' }}>
+                      {fmtDate(s.updated_at)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteSession(e, s.id)}
+                    style={{
+                      background: 'none', border: 'none', padding: 3,
+                      borderRadius: 5, cursor: 'pointer', color: t.textTri,
+                      opacity: isHovered ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
+                      display: 'flex', alignItems: 'center',
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -275,7 +302,9 @@ export function ChatPage() {
             {activeKb?.name ?? '—'}
           </span>
           <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO }}>hybrid · top 5</span>
+          <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO }}>
+            {searchPrefs.searchMode} · top {searchPrefs.topK}
+          </span>
         </div>
 
         {/* Messages */}
@@ -286,6 +315,19 @@ export function ChatPage() {
             <LoadingDots t={t} />
           ) : (
             <>
+              {messages.length === 0 && (
+                <div
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', height: '100%', gap: 8, paddingBottom: 60,
+                    color: t.textTri, fontFamily: FONT, fontSize: 13,
+                  }}
+                >
+                  <MessageSquarePlus size={32} strokeWidth={1.5} color={t.textTri} />
+                  Ask a question to start the conversation
+                </div>
+              )}
+
               {messages.map((msg) => (
                 <MessageBubble
                   key={msg.id}
@@ -299,7 +341,6 @@ export function ChatPage() {
                 />
               ))}
 
-              {/* Streaming message */}
               {streaming && (
                 <MessageBubble
                   role="assistant"
@@ -313,20 +354,13 @@ export function ChatPage() {
                 />
               )}
 
-              {error && (
-                <p style={{ fontSize: 13, color: t.danger, fontFamily: FONT, marginBottom: 12 }}>
-                  {error}
-                </p>
-              )}
-
               <div ref={messagesEndRef} />
             </>
           )}
         </div>
 
-        {/* Input — only shown when a session is active */}
         {activeSessionId && (
-          <InputBar onSend={handleSend} disabled={isStreaming} />
+          <InputBar onSend={handleSend} disabled={streaming} />
         )}
       </div>
 

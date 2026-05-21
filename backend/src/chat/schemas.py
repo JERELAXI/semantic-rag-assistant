@@ -46,6 +46,8 @@ class SessionResponse(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=10000)
+    search_mode: Literal["vector", "fts", "hybrid"] = "hybrid"
+    top_k: int = Field(5, ge=1, le=50)
 
 
 class CitationResponse(BaseModel):

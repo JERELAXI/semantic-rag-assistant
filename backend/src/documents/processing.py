@@ -135,7 +135,7 @@ async def _run_pipeline(db: AsyncSession, document_id: uuid.UUID) -> None:
     await db.flush()
 
     await db.execute(
-        text("UPDATE chunks SET fts_vector = to_tsvector('english', content) WHERE document_id = :doc_id"),
+        text("UPDATE chunks SET fts_vector = to_tsvector('simple', content) WHERE document_id = :doc_id"),
         {"doc_id": document_id},
     )
 

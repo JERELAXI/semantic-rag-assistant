@@ -34,11 +34,11 @@ _FTS_SQL = text("""
            c.metadata,
            d.id         AS document_id,
            d.filename   AS document_title,
-           ts_rank(c.fts_vector, plainto_tsquery('english', :query)) AS rank_score
+           ts_rank(c.fts_vector, plainto_tsquery('simple', :query)) AS rank_score
       FROM chunks c
       JOIN documents d ON d.id = c.document_id
      WHERE d.knowledge_base_id = :kb_id
-       AND c.fts_vector @@ plainto_tsquery('english', :query)
+       AND c.fts_vector @@ plainto_tsquery('simple', :query)
      ORDER BY rank_score DESC
      LIMIT :top_k
 """)

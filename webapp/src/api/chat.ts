@@ -1,5 +1,5 @@
 import { api } from './client';
-import { streamChat, type Citation } from '../hooks/useSSE';
+import { streamChat, type Citation, type StreamChatOpts } from '../hooks/useSSE';
 
 // Re-export so consumers can import citation type from the API layer
 export type CitationResponse = Citation;
@@ -35,6 +35,6 @@ export const chatApi = {
   deleteSession: (sessionId: string) =>
     api.delete(`/chat/sessions/${sessionId}`),
 
-  streamMessage: (sessionId: string, content: string) =>
-    streamChat(sessionId, content),
+  streamMessage: (sessionId: string, content: string, opts?: StreamChatOpts) =>
+    streamChat(sessionId, content, opts),
 };

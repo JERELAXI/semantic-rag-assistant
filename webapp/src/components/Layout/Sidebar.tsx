@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { LayoutDashboard, LogOut, MessageSquare, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +16,7 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [hoveredPath, setHoveredPath] = useState<string | null>(null);
 
   const isActive = (path: string) =>
     path === '/' ? pathname === '/' : pathname.startsWith(path);
@@ -75,10 +77,13 @@ export function Sidebar() {
       {/* Nav items */}
       {NAV_ITEMS.map(({ path, icon: Icon, label }) => {
         const active = isActive(path);
+        const hovered = hoveredPath === path && !active;
         return (
           <div
             key={path}
             onClick={() => navigate(path)}
+            onMouseEnter={() => setHoveredPath(path)}
+            onMouseLeave={() => setHoveredPath(null)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -87,9 +92,9 @@ export function Sidebar() {
               margin: '2px 8px',
               borderRadius: 8,
               cursor: 'pointer',
-              background: active ? t.accentSoft : 'transparent',
-              color: active ? t.accent : t.textSec,
-              transition: 'all 0.15s',
+              background: active ? t.accentSoft : hovered ? t.surfaceAlt : 'transparent',
+              color: active ? t.accent : hovered ? t.text : t.textSec,
+              transition: 'background 0.12s, color 0.12s',
             }}
           >
             <Icon size={16} />
@@ -131,7 +136,10 @@ export function Sidebar() {
             fontSize: 11,
             fontFamily: FONT,
             padding: 0,
+            transition: 'color 0.12s',
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = t.text)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = t.textTri)}
         >
           <LogOut size={12} />
           Sign out

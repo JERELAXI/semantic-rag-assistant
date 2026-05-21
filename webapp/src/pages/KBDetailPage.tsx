@@ -10,17 +10,18 @@ import { FileIcon } from '../components/UI/FileIcon';
 import { StatusBadge } from '../components/UI/StatusBadge';
 import { ConfirmDialog } from '../components/UI/ConfirmDialog';
 import { Skeleton } from '../components/UI/Skeleton';
+import { useToast } from '../contexts/ToastContext';
 
 export function KBDetailPage() {
   const t = useTheme();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const { showToast } = useToast();
 
   const [kb, setKb] = useState<KBResponse | null>(null);
   const [docs, setDocs] = useState<DocumentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
 
   const [deleteDocTarget, setDeleteDocTarget] = useState<DocumentResponse | null>(null);
   const [deleteKbOpen, setDeleteKbOpen] = useState(false);
@@ -52,6 +53,8 @@ export function KBDetailPage() {
       ]);
       setKb(kbData);
       setDocs(docsData);
+    } catch {
+      showToast('Failed to load knowledge base', 'error');
     } finally {
       setLoading(false);
     }
@@ -78,32 +81,45 @@ export function KBDetailPage() {
   async function handleUpload(files: File[]) {
     if (!id) return;
     setUploading(true);
-    setUploadError('');
-    const errors: string[] = [];
+    let successCount = 0;
     for (const file of files) {
       try {
         const title = file.name.replace(/\.[^/.]+$/, '');
         await documentsApi.upload(file, title, id);
+        successCount++;
       } catch (e: any) {
-        errors.push(file.name + ': ' + (e?.response?.data?.detail ?? 'Upload failed'));
+        const msg = e?.response?.data?.detail ?? 'Upload failed';
+        showToast(`${file.name}: ${msg}`, 'error');
       }
     }
-    if (errors.length) setUploadError(errors.join('\n'));
+    if (successCount > 0) {
+      showToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded — processing started`);
+    }
     await refreshDocs();
     setUploading(false);
   }
 
   async function handleDeleteDoc() {
     if (!deleteDocTarget) return;
-    await documentsApi.delete(deleteDocTarget.id);
+    try {
+      await documentsApi.delete(deleteDocTarget.id);
+      showToast(`"${deleteDocTarget.title}" deleted`);
+    } catch {
+      showToast('Failed to delete document', 'error');
+    }
     setDeleteDocTarget(null);
     await refreshDocs();
   }
 
   async function handleDeleteKb() {
     if (!id) return;
-    await kbApi.delete(id);
-    navigate('/');
+    try {
+      await kbApi.delete(id);
+      showToast(`"${kb?.name}" deleted`);
+      navigate('/');
+    } catch {
+      showToast('Failed to delete knowledge base', 'error');
+    }
   }
 
   const fmtDate = (iso: string) =>
@@ -134,8 +150,10 @@ export function KBDetailPage() {
           display: 'flex', alignItems: 'center', gap: 6,
           background: 'none', border: 'none', padding: 0,
           color: t.textSec, fontSize: 13, fontFamily: FONT,
-          cursor: 'pointer', marginBottom: 20,
+          cursor: 'pointer', marginBottom: 20, transition: 'color 0.12s',
         }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = t.text)}
+        onMouseLeave={(e) => (e.currentTarget.style.color = t.textSec)}
       >
         <ArrowLeft size={15} />
         All Knowledge Bases
@@ -165,6 +183,15 @@ export function KBDetailPage() {
             border: `1px solid ${t.border}`,
             background: 'none', color: t.danger,
             fontSize: 12, fontFamily: FONT, cursor: 'pointer',
+            transition: 'border-color 0.12s, background 0.12s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = t.danger;
+            e.currentTarget.style.background = t.dangerSoft;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = t.border;
+            e.currentTarget.style.background = 'none';
           }}
         >
           <Trash2 size={13} />
@@ -175,14 +202,6 @@ export function KBDetailPage() {
       {/* Upload zone */}
       <div style={{ marginBottom: 28 }}>
         <UploadZone onFiles={handleUpload} disabled={uploading} />
-        {uploadError && (
-          <pre style={{
-            fontSize: 11, color: t.danger, fontFamily: FONT,
-            marginTop: 8, whiteSpace: 'pre-wrap',
-          }}>
-            {uploadError}
-          </pre>
-        )}
       </div>
 
       {/* Document list */}
@@ -213,7 +232,6 @@ export function KBDetailPage() {
         </div>
       )}
 
-      {/* Delete document confirm */}
       <ConfirmDialog
         isOpen={!!deleteDocTarget}
         onClose={() => setDeleteDocTarget(null)}
@@ -223,7 +241,6 @@ export function KBDetailPage() {
         confirmLabel="Delete"
       />
 
-      {/* Delete KB confirm */}
       <ConfirmDialog
         isOpen={deleteKbOpen}
         onClose={() => setDeleteKbOpen(false)}

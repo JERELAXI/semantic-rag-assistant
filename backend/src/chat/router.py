@@ -122,7 +122,7 @@ async def send_message(
     await get_session(db, session_id, current_user)
     pipeline = RAGPipeline(db)
     return StreamingResponse(
-        pipeline.stream_response(session_id, body.content),
+        pipeline.stream_response(session_id, body.content, body.search_mode, body.top_k),
         media_type="text/event-stream",
         headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
