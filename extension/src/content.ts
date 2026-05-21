@@ -1,10 +1,44 @@
-// Content script — injects a floating "Add to KB" button on every page
+// Content script — injects a floating "Add to KB" button on eligible pages
 
 const ACCENT = '#6ACD8E'
 const ACCENT_SHADOW = 'rgba(106, 205, 142, 0.45)'
 const BTN_ID = '__rag_add_btn'
 
+const BLOCKED_HOSTS = new Set([
+  'www.youtube.com', 'youtube.com',
+  'twitter.com', 'x.com',
+  'www.facebook.com', 'facebook.com',
+  'www.instagram.com', 'instagram.com',
+  'www.reddit.com', 'reddit.com',
+  'www.tiktok.com', 'tiktok.com',
+])
+
+function isDocumentPage(): boolean {
+  const { protocol, hostname, pathname } = window.location
+
+  // Block browser-internal and extension pages
+  if (protocol === 'chrome:' || protocol === 'chrome-extension:' || protocol === 'about:') return false
+
+  // Block known feed / non-document pages
+  if (BLOCKED_HOSTS.has(hostname)) return false
+
+  // Block Google search results pages
+  if (hostname.includes('google.') && pathname.startsWith('/search')) return false
+
+  // Require meaningful text volume
+  const bodyText = document.body.innerText
+  if (bodyText.length < 500) return false
+
+  // Require at least 3 paragraphs with substantial text
+  const paragraphs = Array.from(document.querySelectorAll('p'))
+  const substantialParas = paragraphs.filter((p) => (p.innerText?.length ?? 0) > 100)
+  if (substantialParas.length < 3) return false
+
+  return true
+}
+
 function injectButton(): void {
+  if (!isDocumentPage()) return
   if (document.getElementById(BTN_ID)) return
 
   const btn = document.createElement('button')
@@ -41,7 +75,6 @@ function injectButton(): void {
   })
 
   btn.addEventListener('click', () => {
-    // Limit to 50 000 chars to avoid huge payloads
     const text = document.body.innerText.slice(0, 50_000)
     const title = document.title || window.location.hostname
     const url = window.location.href
@@ -64,6 +97,7 @@ function injectButton(): void {
         btn.textContent = '+ Add to KB'
         btn.style.background = ACCENT
         btn.style.cursor = 'pointer'
+        btn.style.opacity = '1'
       }, 2500)
     })
   })

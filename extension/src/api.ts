@@ -92,8 +92,18 @@ export interface KBItem {
 }
 
 export async function listKBs(): Promise<KBItem[]> {
-  const res = await apiFetch('/knowledge_bases/list')
+  const res = await apiFetch('/knowledge-bases')
   if (!res.ok) throw new Error('Failed to load knowledge bases')
+  return res.json()
+}
+
+export async function createKB(name: string): Promise<KBItem> {
+  const res = await apiFetch('/knowledge-bases', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description: null, owner_type: 'user' }),
+  })
+  if (!res.ok) throw new Error('Failed to create knowledge base')
   return res.json()
 }
 

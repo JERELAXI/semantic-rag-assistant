@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { darkTokens, lightTokens, type Tokens, SANS, MONO } from './theme'
 import {
   login, storeTokens, clearTokens, isLoggedIn,
-  listKBs, createSession, uploadPageText,
+  listKBs, createKB, createSession, uploadPageText,
   type KBItem,
 } from './api'
 import { streamMessage, type Citation } from './stream'
@@ -354,8 +354,14 @@ function AppShell({
         <IngestConfirm
           t={t}
           data={ingestData}
-          kbs={kbs}
           onClose={onIngestClear}
+          onSuccess={async (kbId) => {
+            onIngestClear()
+            // Refresh KB list then switch to Browser Pages KB
+            const updated = await listKBs().catch(() => kbs)
+            setKbs(updated)
+            await handleKBSelect(kbId)
+          }}
           onSessionExpired={onSessionExpired}
         />
       )}
@@ -909,25 +915,35 @@ function InputBar({
 
 // ── Ingest confirm overlay ────────────────────────────────────────────────
 
+const BROWSER_PAGES_KB = 'Browser Pages'
+
+async function findOrCreateBrowserPagesKB(): Promise<KBItem> {
+  const kbs = await listKBs()
+  const existing = kbs.find((kb) => kb.name === BROWSER_PAGES_KB)
+  if (existing) return existing
+  return createKB(BROWSER_PAGES_KB)
+}
+
 function IngestConfirm({
-  t, data, kbs, onClose, onSessionExpired,
+  t, data, onClose, onSuccess, onSessionExpired,
 }: {
-  t: Tokens; data: IngestData; kbs: KBItem[]
-  onClose: () => void; onSessionExpired: () => void
+  t: Tokens; data: IngestData
+  onClose: () => void
+  onSuccess: (kbId: string) => void
+  onSessionExpired: () => void
 }) {
-  const [selectedKbId, setSelectedKbId] = useState(kbs[0]?.id ?? '')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
 
   const handleConfirm = async () => {
-    if (!selectedKbId) return
     setLoading(true)
     setError('')
     try {
-      await uploadPageText(selectedKbId, data.title, data.text)
+      const kb = await findOrCreateBrowserPagesKB()
+      await uploadPageText(kb.id, data.title, data.text)
       setDone(true)
-      setTimeout(onClose, 1800)
+      setTimeout(() => onSuccess(kb.id), 1400)
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'Session expired') { onSessionExpired(); return }
       setError(e instanceof Error ? e.message : 'Upload failed')
@@ -947,7 +963,7 @@ function IngestConfirm({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: t.text, fontFamily: SANS }}>
-          Add to Knowledge Base
+          Add page to knowledge base
         </span>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.textTertiary, fontSize: 18, lineHeight: 1 }}>
           ×
@@ -957,7 +973,7 @@ function IngestConfirm({
       {/* Page info */}
       <div style={{
         padding: '11px 13px', borderRadius: 10, background: t.surface,
-        border: `1px solid ${t.border}`, marginBottom: 14,
+        border: `1px solid ${t.border}`, marginBottom: 16,
       }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: t.text, fontFamily: SANS, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {data.title}
@@ -973,24 +989,16 @@ function IngestConfirm({
         </div>
       </div>
 
-      {/* KB selector */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, fontFamily: SANS, display: 'block', marginBottom: 6 }}>
-          Knowledge Base
-        </label>
-        <select
-          value={selectedKbId}
-          onChange={(e) => setSelectedKbId(e.target.value)}
-          style={{
-            width: '100%', padding: '8px 10px', borderRadius: 8,
-            border: `1px solid ${t.border}`, background: t.surface,
-            color: t.text, fontSize: 13, fontFamily: SANS,
-            outline: 'none', cursor: 'pointer',
-          }}
-        >
-          <option value="">Select…</option>
-          {kbs.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
-        </select>
+      {/* Destination hint */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 7, marginBottom: 18,
+        fontSize: 12, color: t.textSecondary, fontFamily: SANS,
+      }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2" strokeLinecap="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        </svg>
+        Will be added to <strong style={{ color: t.text, fontWeight: 600, marginLeft: 3 }}>{BROWSER_PAGES_KB}</strong>
       </div>
 
       {error && (
@@ -999,7 +1007,7 @@ function IngestConfirm({
 
       {done ? (
         <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 13, color: t.accent, fontFamily: SANS, fontWeight: 600 }}>
-          ✓ Added — processing started
+          ✓ Added — switching to chat…
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8 }}>
@@ -1015,13 +1023,13 @@ function IngestConfirm({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selectedKbId || loading}
+            disabled={loading}
             style={{
               flex: 1, padding: '9px 0', borderRadius: 8, border: 'none',
               background: t.accent, color: '#fff',
               fontSize: 13, fontWeight: 600, fontFamily: SANS,
-              cursor: !selectedKbId || loading ? 'not-allowed' : 'pointer',
-              opacity: !selectedKbId || loading ? 0.65 : 1,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.65 : 1,
             }}
           >
             {loading ? 'Adding…' : 'Add to KB'}
