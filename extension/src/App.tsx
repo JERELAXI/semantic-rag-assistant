@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { darkTokens, lightTokens, type Tokens, SANS, MONO } from './theme'
 import {
   login, storeTokens, clearTokens, isLoggedIn,
-  listKBs, createSession,
+  listKBs, createKB, createSession, uploadPageText,
   type KBItem,
 } from './api'
 import { streamMessage, type Citation } from './stream'
@@ -29,6 +29,13 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   citations: Citation[]
+}
+
+interface PageInfo {
+  title: string
+  url: string
+  textLength: number
+  text: string
 }
 
 // ── Root app ──────────────────────────────────────────────────────────────
@@ -209,11 +216,30 @@ function AppShell({
   const [streamContent, setStreamContent] = useState('')
   const [streamCitations, setStreamCitations] = useState<Citation[]>([])
   const [activeCit, setActiveCit] = useState<{ msgId: string; n: number } | null>(null)
+  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [ingestKbId, setIngestKbId] = useState('__auto')
+  const [ingesting, setIngesting] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     listKBs()
       .then(setKbs)
       .catch((e) => { if (e?.message === 'Session expired') onSessionExpired() })
+  }, [])
+
+  useEffect(() => {
+    chrome.storage.local.get('page_info', (r) => {
+      if (r.page_info) setPageInfo(r.page_info as PageInfo)
+    })
+    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if ('page_info' in changes) {
+        setPageInfo(changes.page_info.newValue ?? null)
+        setBannerDismissed(false)
+      }
+    }
+    chrome.storage.onChanged.addListener(listener)
+    return () => chrome.storage.onChanged.removeListener(listener)
   }, [])
 
   const handleKBSelect = async (kbId: string) => {
@@ -228,6 +254,39 @@ function AppShell({
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'Session expired') onSessionExpired()
     }
+  }
+
+  const handleIngest = async () => {
+    if (!pageInfo || ingesting) return
+    setIngesting(true)
+    try {
+      let kbId = ingestKbId
+      if (kbId === '__auto') {
+        const all = await listKBs()
+        const found = all.find((kb) => kb.name === 'Browser Pages')
+        if (found) {
+          kbId = found.id
+        } else {
+          const created = await createKB('Browser Pages')
+          kbId = created.id
+          setKbs((prev) => [...prev, created])
+        }
+      }
+      await uploadPageText(kbId, pageInfo.title, pageInfo.text)
+      await handleKBSelect(kbId)
+      setBannerDismissed(true)
+      setToast('Document added')
+      setTimeout(() => setToast(null), 2500)
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'Session expired') onSessionExpired()
+    } finally {
+      setIngesting(false)
+    }
+  }
+
+  const handleDismiss = () => {
+    setBannerDismissed(true)
+    chrome.storage.local.remove('page_info')
   }
 
   const handleNewChat = async () => {
@@ -302,6 +361,19 @@ function AppShell({
         sessionId={sessionId}
       />
 
+      {pageInfo && !bannerDismissed && (
+        <IngestBanner
+          t={t}
+          pageInfo={pageInfo}
+          kbs={kbs}
+          ingestKbId={ingestKbId}
+          ingesting={ingesting}
+          onKbChange={setIngestKbId}
+          onIngest={handleIngest}
+          onDismiss={handleDismiss}
+        />
+      )}
+
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {view === 'chat' ? (
           <ChatView
@@ -321,6 +393,20 @@ function AppShell({
           <SourcesView t={t} citations={lastCitations} />
         )}
       </div>
+
+      {toast && (
+        <div style={{
+          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+          background: t.accent, color: '#fff',
+          fontSize: 12, fontWeight: 600, fontFamily: SANS,
+          padding: '7px 16px', borderRadius: 20,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+          zIndex: 100, pointerEvents: 'none',
+          animation: 'fadeIn 0.2s ease-out', whiteSpace: 'nowrap',
+        }}>
+          {toast}
+        </div>
+      )}
 
     </div>
   )
@@ -451,6 +537,83 @@ function KBSelector({
           New
         </button>
       )}
+    </div>
+  )
+}
+
+// ── Ingest banner ─────────────────────────────────────────────────────────
+
+function IngestBanner({
+  t, pageInfo, kbs, ingestKbId, ingesting, onKbChange, onIngest, onDismiss,
+}: {
+  t: Tokens
+  pageInfo: PageInfo
+  kbs: KBItem[]
+  ingestKbId: string
+  ingesting: boolean
+  onKbChange: (id: string) => void
+  onIngest: () => void
+  onDismiss: () => void
+}) {
+  const title = pageInfo.title.length > 38 ? pageInfo.title.slice(0, 38) + '…' : pageInfo.title
+  const chars = pageInfo.textLength.toLocaleString()
+
+  return (
+    <div style={{
+      padding: '7px 14px', borderBottom: `1px solid ${t.accentBorder}`,
+      background: t.accentSoft,
+      display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+    }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+
+      <span style={{ fontSize: 11.5, color: t.text, fontFamily: SANS, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', minWidth: 0 }}>
+        <strong style={{ fontWeight: 600 }}>{title}</strong>
+        <span style={{ color: t.textTertiary }}> — {chars} chars</span>
+      </span>
+
+      <select
+        value={ingestKbId}
+        onChange={(e) => onKbChange(e.target.value)}
+        disabled={ingesting}
+        style={{
+          fontSize: 11, fontFamily: SANS, padding: '3px 6px', borderRadius: 6,
+          border: `1px solid ${t.accentBorder}`, background: t.surface,
+          color: t.text, cursor: 'pointer', flexShrink: 0, maxWidth: 115,
+        }}
+      >
+        <option value="__auto">Auto (Browser Pages)</option>
+        {kbs.map((kb) => (
+          <option key={kb.id} value={kb.id}>{kb.name}</option>
+        ))}
+      </select>
+
+      <button
+        onClick={onIngest}
+        disabled={ingesting}
+        style={{
+          padding: '4px 10px', borderRadius: 6, border: 'none',
+          background: t.accent, color: '#fff',
+          fontSize: 11, fontWeight: 600, fontFamily: SANS,
+          cursor: ingesting ? 'not-allowed' : 'pointer',
+          opacity: ingesting ? 0.65 : 1, flexShrink: 0,
+        }}
+      >
+        {ingesting ? '…' : 'Add to KB'}
+      </button>
+
+      <button
+        onClick={onDismiss}
+        title="Dismiss"
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: t.textTertiary, fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0,
+        }}
+      >
+        ×
+      </button>
     </div>
   )
 }

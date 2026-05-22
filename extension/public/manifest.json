@@ -3,7 +3,7 @@
   "name": "Semantic RAG Assistant",
   "version": "1.0.0",
   "description": "Chat with your knowledge bases while browsing",
-  "permissions": ["sidePanel", "activeTab", "storage", "tabs"],
+  "permissions": ["sidePanel", "activeTab", "storage", "tabs", "scripting"],
   "side_panel": {
     "default_path": "index.html"
   },

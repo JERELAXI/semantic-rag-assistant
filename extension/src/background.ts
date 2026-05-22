@@ -1,19 +1,35 @@
 // Service worker — opens SidePanel on action click, auto-closes on domain change
 
-// Disable panel globally; enable per-tab only when the user explicitly opens it.
-chrome.sidePanel.setOptions({ enabled: false })
-
 // Track the origin each tab's panel was opened on (in-memory; resets on service-worker restart).
 const panelOrigins: Record<number, string> = {}
 
+// open() must be called synchronously within the user-gesture frame — any await before it
+// causes Chrome to silently drop the call (user-gesture token expires on suspension).
+// Everything after open() can be async.
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id === undefined) return
-  // setOptions must complete before open() is called, so we await it.
-  await chrome.sidePanel.setOptions({ tabId: tab.id, enabled: true })
   chrome.sidePanel.open({ tabId: tab.id })
   if (tab.url) {
     try { panelOrigins[tab.id] = new URL(tab.url).origin } catch { /* ignore non-parseable URLs */ }
   }
+
+  // Extract page text and write to storage so the SidePanel banner can offer "Add to KB".
+  // Fails silently on chrome:// pages, PDFs, and extension pages — no banner is fine there.
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => ({
+        title: document.title,
+        url: location.href,
+        text: (document.body?.innerText ?? '').slice(0, 500_000),
+      }),
+    })
+    if (result) {
+      await chrome.storage.local.set({
+        page_info: { title: result.title, url: result.url, textLength: result.text.length, text: result.text },
+      })
+    }
+  } catch { /* privileged pages — skip */ }
 })
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
