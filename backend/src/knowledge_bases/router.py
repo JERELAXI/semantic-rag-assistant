@@ -1,6 +1,7 @@
-"""Knowledge-base routes: GET /, POST /, GET /{id}, DELETE /{id}."""
+"""Knowledge-base routes: CRUD + share management."""
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,24 +9,60 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.models import User
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
-from src.knowledge_bases.schemas import KBCreate, KBResponse
+from src.knowledge_bases.models import KBShare, KnowledgeBase
+from src.knowledge_bases.schemas import KBCreate, KBResponse, KBShareCreate, KBShareResponse
 from src.knowledge_bases.service import (
+    check_kb_owner,
     create_knowledge_base,
     delete_knowledge_base,
-    get_knowledge_base,
+    get_kb_shares,
+    get_kb_with_permission,
     list_knowledge_bases,
+    share_kb,
+    unshare_kb,
 )
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
 
+
+def _build_kb_response(
+    kb: KnowledgeBase,
+    permission: Literal["owner", "editor", "viewer"],
+    shared_by_name: str | None = None,
+) -> KBResponse:
+    return KBResponse(
+        id=kb.id,
+        name=kb.name,
+        description=kb.description,
+        owner_type=kb.owner_type,
+        owner_id=kb.owner_id,
+        created_at=kb.created_at,
+        updated_at=kb.updated_at,
+        permission=permission,
+        shared_by_name=shared_by_name,
+    )
+
+
+def _build_share_response(share: KBShare) -> KBShareResponse:
+    return KBShareResponse(
+        id=share.id,
+        shared_with_user_id=share.shared_with_user_id,
+        shared_with_email=share.shared_with.email,
+        shared_with_display_name=share.shared_with.display_name,
+        permission=share.permission,  # type: ignore[arg-type]
+        created_at=share.created_at,
+    )
+
+
+# ── KB CRUD ──────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[KBResponse])
 async def list_kbs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[KBResponse]:
-    kbs = await list_knowledge_bases(db, current_user)
-    return [KBResponse.model_validate(kb) for kb in kbs]
+    items = await list_knowledge_bases(db, current_user)
+    return [_build_kb_response(kb, perm, shared_by) for kb, perm, shared_by in items]
 
 
 @router.post("", response_model=KBResponse, status_code=201)
@@ -37,7 +74,7 @@ async def create(
     kb = await create_knowledge_base(
         db, current_user, body.name, body.description, body.owner_type, body.owner_id
     )
-    return KBResponse.model_validate(kb)
+    return _build_kb_response(kb, "owner")
 
 
 @router.get("/{kb_id}", response_model=KBResponse)
@@ -46,8 +83,8 @@ async def get(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> KBResponse:
-    kb = await get_knowledge_base(db, kb_id, current_user)
-    return KBResponse.model_validate(kb)
+    kb, permission, shared_by_name = await get_kb_with_permission(db, kb_id, current_user)
+    return _build_kb_response(kb, permission, shared_by_name)
 
 
 @router.delete("/{kb_id}", status_code=204)
@@ -57,3 +94,36 @@ async def delete(
     current_user: User = Depends(get_current_user),
 ) -> None:
     await delete_knowledge_base(db, kb_id, current_user)
+
+
+# ── Share management ─────────────────────────────────────────────────────────
+
+@router.post("/{kb_id}/share", response_model=KBShareResponse, status_code=201)
+async def share(
+    kb_id: uuid.UUID,
+    body: KBShareCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> KBShareResponse:
+    kb_share = await share_kb(db, kb_id, current_user, body.email, body.permission)
+    return _build_share_response(kb_share)
+
+
+@router.get("/{kb_id}/shares", response_model=list[KBShareResponse])
+async def list_shares(
+    kb_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[KBShareResponse]:
+    shares = await get_kb_shares(db, kb_id, current_user)
+    return [_build_share_response(s) for s in shares]
+
+
+@router.delete("/{kb_id}/shares/{user_id}", status_code=204)
+async def remove_share(
+    kb_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    await unshare_kb(db, kb_id, current_user, user_id)

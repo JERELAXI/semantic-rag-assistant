@@ -14,7 +14,7 @@ from src.auth.models import User
 from src.core.config import settings
 from src.core.exceptions import ConflictError, NotFoundError
 from src.documents.models import Chunk, Document
-from src.knowledge_bases.service import check_kb_access
+from src.knowledge_bases.service import check_kb_access, check_kb_write_access
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 
@@ -35,7 +35,7 @@ async def ingest_document_bytes(
     data: bytes,
     filename: str | None = None,
 ) -> Document:
-    await check_kb_access(db, knowledge_base_id, user)
+    await check_kb_write_access(db, knowledge_base_id, user)
 
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise ValueError(f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}")
@@ -120,6 +120,7 @@ async def list_documents(db: AsyncSession, knowledge_base_id: uuid.UUID, user: U
 
 async def delete_document(db: AsyncSession, document_id: uuid.UUID, user: User) -> None:
     document = await get_document(db, document_id, user)
+    await check_kb_write_access(db, document.knowledge_base_id, user)
 
     file_path = Path(document.file_path)
     if file_path.exists():

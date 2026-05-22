@@ -1,9 +1,9 @@
-"""SQLAlchemy ORM model: KnowledgeBase (polymorphic owner: user or organization)."""
+"""SQLAlchemy ORM models: KnowledgeBase (polymorphic owner: user or organization), KBShare."""
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,6 +32,9 @@ class KnowledgeBase(Base):
     sessions: Mapped[list["Session"]] = relationship(  # noqa: F821
         "Session", back_populates="knowledge_base", cascade="all, delete-orphan"
     )
+    shares: Mapped[list["KBShare"]] = relationship(
+        "KBShare", back_populates="knowledge_base", cascade="all, delete-orphan"
+    )
 
     # Convenience back-references for polymorphic owner (joined via primaryjoin in auth/org models)
     owner_user: Mapped["User | None"] = relationship(  # noqa: F821
@@ -48,3 +51,22 @@ class KnowledgeBase(Base):
         back_populates="knowledge_bases",
         viewonly=True,
     )
+
+
+class KBShare(Base):
+    __tablename__ = "kb_shares"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    knowledge_base_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    shared_with_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    permission: Mapped[str] = mapped_column(String(10), nullable=False)  # "viewer" | "editor"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("knowledge_base_id", "shared_with_user_id", name="uq_kb_shares_kb_user"),)
+
+    knowledge_base: Mapped["KnowledgeBase"] = relationship("KnowledgeBase", back_populates="shares")
+    shared_with: Mapped["User"] = relationship("User", foreign_keys=[shared_with_user_id])  # noqa: F821

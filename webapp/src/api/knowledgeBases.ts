@@ -8,6 +8,17 @@ export interface KBResponse {
   owner_id: string;
   created_at: string;
   updated_at: string;
+  permission: 'owner' | 'editor' | 'viewer';
+  shared_by_name: string | null;
+}
+
+export interface KBShareResponse {
+  id: string;
+  shared_with_user_id: string;
+  shared_with_email: string;
+  shared_with_display_name: string;
+  permission: 'viewer' | 'editor';
+  created_at: string;
 }
 
 export const kbApi = {
@@ -20,4 +31,11 @@ export const kbApi = {
     }),
   get: (id: string) => api.get<KBResponse>(`/knowledge-bases/${id}`),
   delete: (id: string) => api.delete(`/knowledge-bases/${id}`),
+
+  share: (kbId: string, email: string, permission: 'viewer' | 'editor') =>
+    api.post<KBShareResponse>(`/knowledge-bases/${kbId}/share`, { email, permission }),
+  listShares: (kbId: string) =>
+    api.get<KBShareResponse[]>(`/knowledge-bases/${kbId}/shares`),
+  unshare: (kbId: string, userId: string) =>
+    api.delete(`/knowledge-bases/${kbId}/shares/${userId}`),
 };

@@ -1,10 +1,10 @@
-"""Pydantic v2 schemas: KBCreate, KBResponse."""
+"""Pydantic v2 schemas: KBCreate, KBResponse, KBShareCreate, KBShareResponse."""
 
 import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class KBCreate(BaseModel):
@@ -31,3 +31,21 @@ class KBResponse(BaseModel):
     owner_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    # Caller's access level: "owner" for KB owner/org-member, "editor"/"viewer" for share recipients
+    permission: Literal["owner", "editor", "viewer"] = "owner"
+    # Display name of the KB owner, populated only when permission != "owner"
+    shared_by_name: str | None = None
+
+
+class KBShareCreate(BaseModel):
+    email: str = Field(..., min_length=1, max_length=255)
+    permission: Literal["viewer", "editor"] = "viewer"
+
+
+class KBShareResponse(BaseModel):
+    id: uuid.UUID
+    shared_with_user_id: uuid.UUID
+    shared_with_email: str
+    shared_with_display_name: str
+    permission: Literal["viewer", "editor"]
+    created_at: datetime

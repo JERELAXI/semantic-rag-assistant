@@ -167,21 +167,23 @@ export function DashboardPage() {
                 boxShadow: hoveredId === kb.id ? `0 4px 16px ${t.accent}12` : 'none',
               }}
             >
-              <button
-                onClick={(e) => { e.stopPropagation(); setDeleteTarget(kb); }}
-                style={{
-                  position: 'absolute', top: 12, right: 12,
-                  background: 'none', border: 'none',
-                  padding: 4, borderRadius: 6, cursor: 'pointer',
-                  color: t.textTri,
-                  opacity: hoveredId === kb.id ? 1 : 0,
-                  transition: 'opacity 0.15s',
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
+              {kb.permission === 'owner' && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(kb); }}
+                  style={{
+                    position: 'absolute', top: 12, right: 12,
+                    background: 'none', border: 'none',
+                    padding: 4, borderRadius: 6, cursor: 'pointer',
+                    color: t.textTri,
+                    opacity: hoveredId === kb.id ? 1 : 0,
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: 8,
                   background: t.accentSoft,
@@ -189,13 +191,32 @@ export function DashboardPage() {
                 }}>
                   <Database size={16} color={t.accent} />
                 </div>
-                <span style={{
-                  fontSize: 14, fontWeight: 600, color: t.text, fontFamily: FONT,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  maxWidth: 160,
-                }}>
-                  {kb.name}
-                </span>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{
+                    fontSize: 14, fontWeight: 600, color: t.text, fontFamily: FONT,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    display: 'block', maxWidth: 160,
+                  }}>
+                    {kb.name}
+                  </span>
+                  {kb.permission !== 'owner' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 600, fontFamily: FONT,
+                        padding: '1px 6px', borderRadius: 4,
+                        background: t.accentSoft, color: t.accent,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                      }}>
+                        Shared
+                      </span>
+                      {kb.shared_by_name && (
+                        <span style={{ fontSize: 11, color: t.textTri, fontFamily: FONT }}>
+                          by {kb.shared_by_name}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {kb.description && (
