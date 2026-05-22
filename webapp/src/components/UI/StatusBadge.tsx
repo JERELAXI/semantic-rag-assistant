@@ -1,4 +1,5 @@
 import { useTheme } from '../../hooks/useTheme';
+import { useT } from '../../contexts/LangContext';
 import { FONT } from '../../styles/theme';
 
 type Status = 'uploading' | 'processing' | 'ready' | 'failed';
@@ -9,15 +10,16 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const t = useTheme();
+  const tx = useT();
 
-  const conf: Record<Status, { bg: string; color: string; label: string }> = {
-    ready:      { bg: t.accentSoft,                color: t.statusReady, label: 'Ready' },
-    processing: { bg: `${t.statusProc}20`,          color: t.statusProc,  label: 'Processing' },
-    uploading:  { bg: `${t.statusProc}20`,          color: t.statusProc,  label: 'Uploading' },
-    failed:     { bg: t.dangerSoft,                color: t.statusFail,  label: 'Failed' },
+  const conf: Record<Status, { bg: string; color: string; key: string }> = {
+    ready:      { bg: t.accentSoft,       color: t.statusReady, key: 'status.ready' },
+    processing: { bg: `${t.statusProc}20`, color: t.statusProc,  key: 'status.processing' },
+    uploading:  { bg: `${t.statusProc}20`, color: t.statusProc,  key: 'status.uploading' },
+    failed:     { bg: t.dangerSoft,       color: t.statusFail,  key: 'status.failed' },
   };
 
-  const { bg, color, label } = conf[status] ?? conf.processing;
+  const { bg, color, key } = conf[status] ?? conf.processing;
 
   return (
     <span
@@ -28,7 +30,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
         fontFamily: FONT, whiteSpace: 'nowrap',
       }}
     >
-      {label}
+      {tx(key)}
     </span>
   );
 }

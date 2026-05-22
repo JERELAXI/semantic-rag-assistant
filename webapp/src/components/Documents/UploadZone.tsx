@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
+import { useT } from '../../contexts/LangContext';
 import { FONT } from '../../styles/theme';
 
 interface UploadZoneProps {
@@ -10,6 +11,7 @@ interface UploadZoneProps {
 
 export function UploadZone({ onFiles, disabled = false }: UploadZoneProps) {
   const t = useTheme();
+  const tx = useT();
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -64,10 +66,10 @@ export function UploadZone({ onFiles, disabled = false }: UploadZoneProps) {
         <Upload size={24} />
       </div>
       <div style={{ fontSize: 13, fontWeight: 500, color: t.text, fontFamily: FONT }}>
-        {disabled ? 'Uploading…' : 'Drop files here or click to browse'}
+        {disabled ? tx('upload.loading') : tx('upload.idle')}
       </div>
       <div style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, marginTop: 4 }}>
-        PDF, DOCX, TXT, MD · max 50 MB
+        {tx('upload.formats')}
       </div>
     </div>
   );

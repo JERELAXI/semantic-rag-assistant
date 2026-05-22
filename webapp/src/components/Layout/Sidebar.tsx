@@ -3,16 +3,19 @@ import { LayoutDashboard, LogOut, MessageSquare, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../hooks/useTheme';
+import { useT, useLang } from '../../contexts/LangContext';
 import { FONT } from '../../styles/theme';
 
 const NAV_ITEMS = [
-  { path: '/', icon: LayoutDashboard, label: 'Knowledge Bases' },
-  { path: '/chat', icon: MessageSquare, label: 'Chat' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/', icon: LayoutDashboard, key: 'nav.knowledgeBases' },
+  { path: '/chat', icon: MessageSquare, key: 'nav.chat' },
+  { path: '/settings', icon: Settings, key: 'nav.settings' },
 ] as const;
 
 export function Sidebar() {
   const t = useTheme();
+  const tx = useT();
+  const { lang, setLang } = useLang();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -75,7 +78,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav items */}
-      {NAV_ITEMS.map(({ path, icon: Icon, label }) => {
+      {NAV_ITEMS.map(({ path, icon: Icon, key }) => {
         const active = isActive(path);
         const hovered = hoveredPath === path && !active;
         return (
@@ -98,12 +101,48 @@ export function Sidebar() {
             }}
           >
             <Icon size={16} />
-            <span style={{ fontSize: 13, fontWeight: 500, fontFamily: FONT }}>{label}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, fontFamily: FONT }}>{tx(key)}</span>
           </div>
         );
       })}
 
       <div style={{ flex: 1 }} />
+
+      {/* Language toggle */}
+      <div
+        style={{
+          margin: '0 16px 10px',
+          display: 'flex',
+          gap: 4,
+          padding: '4px',
+          borderRadius: 8,
+          background: t.surfaceAlt,
+          border: `1px solid ${t.borderSubtle}`,
+        }}
+      >
+        {(['uk', 'en'] as const).map((l) => (
+          <button
+            key={l}
+            onClick={() => setLang(l)}
+            style={{
+              flex: 1,
+              padding: '5px 0',
+              borderRadius: 5,
+              border: 'none',
+              background: lang === l ? t.accent : 'transparent',
+              color: lang === l ? '#fff' : t.textTri,
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: FONT,
+              cursor: 'pointer',
+              letterSpacing: '0.04em',
+              transition: 'all 0.15s',
+            }}
+          >
+            {l === 'uk' ? 'UA' : 'EN'}
+          </button>
+        ))}
+      </div>
 
       {/* User card */}
       <div
@@ -142,7 +181,7 @@ export function Sidebar() {
           onMouseLeave={(e) => (e.currentTarget.style.color = t.textTri)}
         >
           <LogOut size={12} />
-          Sign out
+          {tx('nav.signOut')}
         </button>
       </div>
     </div>

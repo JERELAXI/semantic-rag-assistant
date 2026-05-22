@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useT, useLang } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { kbApi } from '../api/knowledgeBases';
 import { chatApi, type CitationResponse, type MessageResponse, type SessionResponse } from '../api/chat';
@@ -14,6 +15,8 @@ import type { KBResponse } from '../api/knowledgeBases';
 
 export function ChatPage() {
   const t = useTheme();
+  const tx = useT();
+  const { lang } = useLang();
   const { showToast } = useToast();
 
   const [kbs, setKbs] = useState<KBResponse[]>([]);
@@ -36,7 +39,6 @@ export function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Read prefs once on mount — remounts when navigating back from Settings
   const searchPrefs = getSearchPrefs();
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export function ChatPage() {
     setActiveCitation(null);
     chatApi.getMessages(activeSessionId)
       .then(({ data }) => setMessages(data))
-      .catch(() => showToast('Failed to load messages', 'error'))
+      .catch(() => showToast(tx('toast.messagesLoadFailed'), 'error'))
       .finally(() => setLoadingMsgs(false));
   }, [activeSessionId]);
 
@@ -64,7 +66,7 @@ export function ChatPage() {
       const { data } = await chatApi.listSessions();
       setAllSessions(data);
     } catch {
-      showToast('Failed to load sessions', 'error');
+      showToast(tx('toast.sessionsLoadFailed'), 'error');
     } finally {
       setLoadingSessions(false);
     }
@@ -83,7 +85,7 @@ export function ChatPage() {
       setMessages([]);
       setActiveCitation(null);
     } catch {
-      showToast('Failed to create chat session', 'error');
+      showToast(tx('toast.sessionCreateFailed'), 'error');
     }
   }
 
@@ -102,7 +104,7 @@ export function ChatPage() {
       const { data } = await chatApi.renameSession(sessionId, trimmed);
       setAllSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: data.title } : s)));
     } catch {
-      showToast('Failed to rename session', 'error');
+      showToast(tx('toast.sessionRenameFailed'), 'error');
     }
   }
 
@@ -120,7 +122,7 @@ export function ChatPage() {
         setMessages([]);
       }
     } catch {
-      showToast('Failed to delete session', 'error');
+      showToast(tx('toast.sessionDeleteFailed'), 'error');
     }
   }
 
@@ -162,8 +164,6 @@ export function ChatPage() {
               citations: accCitations,
             },
           ]);
-          // Apply auto-generated session title from the SSE payload instantly,
-          // before the loadSessions refetch finishes — keeps the sidebar in sync.
           if (event.session_title) {
             const newTitle = event.session_title;
             setAllSessions((prev) =>
@@ -174,7 +174,7 @@ export function ChatPage() {
         }
       }
     } catch {
-      showToast('Streaming failed — please try again.', 'error');
+      showToast(tx('toast.streamFailed'), 'error');
       setStreamingContent('');
     } finally {
       setStreaming(false);
@@ -191,8 +191,9 @@ export function ChatPage() {
 
   const activeKb = kbs.find((kb) => kb.id === selectedKbId);
 
+  const locale = lang === 'uk' ? 'uk-UA' : 'en-US';
   const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -209,7 +210,7 @@ export function ChatPage() {
         {/* KB selector */}
         <div style={{ padding: '14px 12px', borderBottom: `1px solid ${t.borderSubtle}` }}>
           <label style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Knowledge Base
+            {tx('chat.kbLabel')}
           </label>
           <select
             value={selectedKbId}
@@ -226,7 +227,7 @@ export function ChatPage() {
               fontSize: 13, fontFamily: FONT, outline: 'none', cursor: 'pointer',
             }}
           >
-            <option value="">Select KB…</option>
+            <option value="">{tx('chat.selectKb')}</option>
             {kbs.map((kb) => (
               <option key={kb.id} value={kb.id}>{kb.name}</option>
             ))}
@@ -250,7 +251,7 @@ export function ChatPage() {
             }}
           >
             <MessageSquarePlus size={14} />
-            New chat
+            {tx('chat.newChat')}
           </button>
         </div>
 
@@ -267,7 +268,7 @@ export function ChatPage() {
             </div>
           ) : sessions.length === 0 ? (
             <p style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, padding: '16px 12px', textAlign: 'center' }}>
-              {selectedKbId ? 'No chats yet' : 'Select a KB to see chats'}
+              {selectedKbId ? tx('chat.empty.noChats') : tx('chat.empty.selectKb')}
             </p>
           ) : (
             sessions.map((s) => {
@@ -317,7 +318,7 @@ export function ChatPage() {
                           margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}
                       >
-                        {s.title ?? 'Untitled chat'}
+                        {s.title ?? tx('chat.untitled')}
                       </p>
                     )}
                     <p style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, margin: '2px 0 0' }}>
@@ -364,7 +365,7 @@ export function ChatPage() {
             display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 13, color: t.textTri, fontFamily: FONT }}>Knowledge Base:</span>
+          <span style={{ fontSize: 13, color: t.textTri, fontFamily: FONT }}>{tx('chat.kbbar.label')}</span>
           <span style={{ fontSize: 13, fontWeight: 500, color: t.text, fontFamily: FONT }}>
             {activeKb?.name ?? '—'}
           </span>
@@ -391,7 +392,7 @@ export function ChatPage() {
                   }}
                 >
                   <MessageSquarePlus size={32} strokeWidth={1.5} color={t.textTri} />
-                  Ask a question to start the conversation
+                  {tx('chat.message.startPrompt')}
                 </div>
               )}
 
@@ -441,6 +442,7 @@ export function ChatPage() {
 
 function EmptyState({ hasKb, onNewChat }: { hasKb: boolean; onNewChat: () => void }) {
   const t = useTheme();
+  const tx = useT();
   return (
     <div
       style={{
@@ -450,7 +452,7 @@ function EmptyState({ hasKb, onNewChat }: { hasKb: boolean; onNewChat: () => voi
     >
       <MessageSquarePlus size={40} color={t.textTri} strokeWidth={1.5} />
       <p style={{ fontSize: 14, color: t.textSec, fontFamily: FONT, margin: 0 }}>
-        {hasKb ? 'Start a new chat' : 'Select a knowledge base to begin'}
+        {hasKb ? tx('chat.emptyState.hasKb') : tx('chat.emptyState.noKb')}
       </p>
       {hasKb && (
         <button
@@ -462,7 +464,7 @@ function EmptyState({ hasKb, onNewChat }: { hasKb: boolean; onNewChat: () => voi
             fontSize: 13, fontWeight: 500, fontFamily: FONT, cursor: 'pointer',
           }}
         >
-          New chat
+          {tx('chat.emptyState.newChat')}
         </button>
       )}
     </div>

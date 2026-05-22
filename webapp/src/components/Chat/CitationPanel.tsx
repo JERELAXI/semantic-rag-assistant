@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
+import { useT } from '../../contexts/LangContext';
 import { FONT, MONO } from '../../styles/theme';
 import type { CitationResponse } from '../../api/chat';
 
@@ -11,6 +12,7 @@ interface CitationPanelProps {
 
 export function CitationPanel({ citation, index, onClose }: CitationPanelProps) {
   const t = useTheme();
+  const tx = useT();
 
   return (
     <div
@@ -29,7 +31,7 @@ export function CitationPanel({ citation, index, onClose }: CitationPanelProps) 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: FONT }}>
-            Source [{index}]
+            {tx('citation.source', { index })}
           </span>
           <button
             onClick={onClose}
@@ -56,14 +58,16 @@ export function CitationPanel({ citation, index, onClose }: CitationPanelProps) 
             <span style={{ fontSize: 20, fontWeight: 700, color: t.accent, fontFamily: FONT }}>
               {(citation.relevance_score * 100).toFixed(0)}%
             </span>
-            <span style={{ fontSize: 11, color: t.textTri, fontFamily: FONT }}>relevance</span>
+            <span style={{ fontSize: 11, color: t.textTri, fontFamily: FONT }}>
+              {tx('citation.relevance')}
+            </span>
           </div>
         </div>
 
         {/* Chunk text */}
         <div>
           <p style={{ fontSize: 12, fontWeight: 600, color: t.textSec, fontFamily: MONO, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Excerpt
+            {tx('citation.excerpt')}
           </p>
           <div
             style={{

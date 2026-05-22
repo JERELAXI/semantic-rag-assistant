@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
+import { useT } from '../../contexts/LangContext';
 import { FONT } from '../../styles/theme';
 
 interface InputBarProps {
@@ -9,6 +10,7 @@ interface InputBarProps {
 
 export function InputBar({ onSend, disabled }: InputBarProps) {
   const t = useTheme();
+  const tx = useT();
   const [value, setValue] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -51,7 +53,7 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onInput={handleInput}
-          placeholder="Ask a question about your documents…"
+          placeholder={tx('input.placeholder')}
           rows={1}
           disabled={disabled}
           style={{
@@ -80,7 +82,7 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
         </button>
       </div>
       <p style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, textAlign: 'center', marginTop: 8 }}>
-        Enter to send · Shift+Enter for newline
+        {tx('input.hint')}
       </p>
     </div>
   );

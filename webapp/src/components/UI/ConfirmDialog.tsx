@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal } from './Modal';
 import { useTheme } from '../../hooks/useTheme';
+import { useT } from '../../contexts/LangContext';
 import { FONT } from '../../styles/theme';
 
 interface ConfirmDialogProps {
@@ -18,10 +19,13 @@ export function ConfirmDialog({
   onConfirm,
   title,
   message,
-  confirmLabel = 'Delete',
+  confirmLabel,
 }: ConfirmDialogProps) {
   const t = useTheme();
+  const tx = useT();
   const [loading, setLoading] = useState(false);
+
+  const label = confirmLabel ?? tx('confirm.delete');
 
   const handleConfirm = async () => {
     setLoading(true);
@@ -38,9 +42,7 @@ export function ConfirmDialog({
       <p style={{ fontSize: 14, color: t.textSec, fontFamily: FONT, lineHeight: 1.6 }}>
         {message}
       </p>
-      <div
-        style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 24 }}
-      >
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 24 }}>
         <button
           onClick={onClose}
           disabled={loading}
@@ -50,7 +52,7 @@ export function ConfirmDialog({
             fontSize: 13, fontWeight: 500, fontFamily: FONT, cursor: 'pointer',
           }}
         >
-          Cancel
+          {tx('confirm.cancel')}
         </button>
         <button
           onClick={handleConfirm}
@@ -63,7 +65,7 @@ export function ConfirmDialog({
             opacity: loading ? 0.7 : 1,
           }}
         >
-          {loading ? 'Deleting…' : confirmLabel}
+          {loading ? tx('confirm.deleting') : label}
         </button>
       </div>
     </Modal>

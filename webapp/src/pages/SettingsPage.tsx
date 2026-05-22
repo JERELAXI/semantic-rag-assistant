@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Server } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useT } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { SEARCH_MODE_KEY, TOP_K_KEY, type SearchMode, getSearchPrefs } from '../hooks/useSearchPrefs';
 
@@ -8,6 +9,7 @@ export { getSearchPrefs };
 
 export function SettingsPage() {
   const t = useTheme();
+  const tx = useT();
   const [searchMode, setSearchMode] = useState<SearchMode>(
     () => (localStorage.getItem(SEARCH_MODE_KEY) as SearchMode) ?? 'hybrid',
   );
@@ -29,21 +31,16 @@ export function SettingsPage() {
     <div style={{ padding: '32px 40px', maxWidth: 600 }}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: t.text, fontFamily: FONT, margin: 0 }}>
-          Settings
+          {tx('settings.heading')}
         </h1>
         <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, marginTop: 4, marginBottom: 0 }}>
-          Search preferences and server configuration
+          {tx('settings.subtitle')}
         </p>
       </div>
 
-      {/* Search Preferences */}
-      <SectionLabel
-        title="Search Preferences"
-        sub="Saved in your browser — sent with every chat request"
-        t={t}
-      />
+      <SectionLabel title={tx('settings.search.title')} sub={tx('settings.search.subtitle')} t={t} />
 
-      <SettingRow label="Search Mode" desc="Retrieval strategy used for every query" isLast={false} t={t}>
+      <SettingRow label={tx('settings.searchMode.label')} desc={tx('settings.searchMode.desc')} isLast={false} t={t}>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['vector', 'fts', 'hybrid'] as SearchMode[]).map((m) => (
             <ModeBtn key={m} label={m} active={searchMode === m} onClick={() => handleSearchMode(m)} t={t} />
@@ -51,7 +48,7 @@ export function SettingsPage() {
         </div>
       </SettingRow>
 
-      <SettingRow label={`Top K — ${topK}`} desc="Number of chunks retrieved as context" isLast t={t}>
+      <SettingRow label={tx('settings.topK.label', { value: topK })} desc={tx('settings.topK.desc')} isLast t={t}>
         <div style={{ width: 180 }}>
           <input
             type="range"
@@ -70,16 +67,11 @@ export function SettingsPage() {
 
       <div style={{ height: 32 }} />
 
-      {/* Server Configuration */}
-      <SectionLabel
-        title="Server Configuration"
-        sub="Managed via environment variables — read-only"
-        t={t}
-      />
+      <SectionLabel title={tx('settings.server.title')} sub={tx('settings.server.subtitle')} t={t} />
 
       <SettingRow
-        label="Embedding Provider"
-        desc="Model used to vectorise document chunks"
+        label={tx('settings.embedding.label')}
+        desc={tx('settings.embedding.desc')}
         serverNote
         isLast={false}
         t={t}
@@ -91,8 +83,8 @@ export function SettingsPage() {
       </SettingRow>
 
       <SettingRow
-        label="NVIDIA Reranker"
-        desc="Cross-encoder reranking of retrieved chunks"
+        label={tx('settings.reranker.label')}
+        desc={tx('settings.reranker.desc')}
         serverNote
         isLast
         t={t}
@@ -129,6 +121,7 @@ function SettingRow({
   children: React.ReactNode;
   t: ReturnType<typeof useTheme>;
 }) {
+  const tx = useT();
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -142,7 +135,7 @@ function SettingRow({
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
             <Server size={10} color={t.textTri} />
             <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO }}>
-              Configured on server via .env
+              {tx('settings.serverNote')}
             </span>
           </div>
         )}

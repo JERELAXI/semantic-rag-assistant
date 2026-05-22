@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTheme } from '../../hooks/useTheme';
+import { useT } from '../../contexts/LangContext';
 import { FONT, MONO } from '../../styles/theme';
 import type { CitationResponse } from '../../api/chat';
 
@@ -21,6 +22,7 @@ export function MessageBubble({
   activeCitationIndex = null,
 }: MessageBubbleProps) {
   const t = useTheme();
+  const tx = useT();
 
   if (role === 'user') {
     return (
@@ -58,7 +60,7 @@ export function MessageBubble({
           </svg>
         </div>
         <span style={{ fontSize: 12, fontWeight: 600, color: t.textSec, fontFamily: FONT }}>
-          Assistant
+          {tx('message.assistant')}
         </span>
       </div>
 
@@ -120,7 +122,7 @@ export function MessageBubble({
                     {cit.document_title}
                   </div>
                   <div style={{ fontSize: 10, color: t.textTri, fontFamily: FONT }}>
-                    {(cit.relevance_score * 100).toFixed(0)}% match
+                    {tx('message.match', { percent: (cit.relevance_score * 100).toFixed(0) })}
                   </div>
                 </div>
               </div>
@@ -169,7 +171,6 @@ function parseContent(
       return;
     }
 
-    // Text: handle newlines then bold
     part.split('\n').forEach((line, lineIdx) => {
       if (lineIdx > 0) result.push(<br key={`br-${partIdx}-${lineIdx}`} />);
 

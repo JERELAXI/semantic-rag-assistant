@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FileText, Share2, Trash2, UserMinus, X } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useT, useLang } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { kbApi, KBResponse, KBShareResponse } from '../api/knowledgeBases';
 import { documentsApi, DocumentResponse } from '../api/documents';
@@ -15,6 +16,8 @@ import { useToast } from '../contexts/ToastContext';
 
 export function KBDetailPage() {
   const t = useTheme();
+  const tx = useT();
+  const { lang } = useLang();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
@@ -27,7 +30,6 @@ export function KBDetailPage() {
   const [deleteDocTarget, setDeleteDocTarget] = useState<DocumentResponse | null>(null);
   const [deleteKbOpen, setDeleteKbOpen] = useState(false);
 
-  // Share modal state
   const [shareOpen, setShareOpen] = useState(false);
   const [shares, setShares] = useState<KBShareResponse[]>([]);
   const [sharesLoading, setSharesLoading] = useState(false);
@@ -58,7 +60,7 @@ export function KBDetailPage() {
     setSharesLoading(true);
     kbApi.listShares(id)
       .then(({ data }) => setShares(data))
-      .catch(() => showToast('Failed to load shares', 'error'))
+      .catch(() => showToast(tx('toast.sharesLoadFailed'), 'error'))
       .finally(() => setSharesLoading(false));
   }, [shareOpen]);
 
@@ -73,7 +75,7 @@ export function KBDetailPage() {
       setKb(kbData);
       setDocs(docsData);
     } catch {
-      showToast('Failed to load knowledge base', 'error');
+      showToast(tx('toast.kbDetailLoadFailed'), 'error');
     } finally {
       setLoading(false);
     }
@@ -108,7 +110,7 @@ export function KBDetailPage() {
         successCount++;
       } catch (e: any) {
         if (e?.response?.status === 409) {
-          showToast(`"${file.name}": Document already exists in this knowledge base`, 'error');
+          showToast(tx('toast.uploadExists', { filename: file.name }), 'error');
         } else {
           const msg = e?.response?.data?.detail ?? 'Upload failed';
           showToast(`${file.name}: ${msg}`, 'error');
@@ -116,7 +118,8 @@ export function KBDetailPage() {
       }
     }
     if (successCount > 0) {
-      showToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded — processing started`);
+      const key = successCount === 1 ? 'toast.uploaded.one' : 'toast.uploaded.many';
+      showToast(tx(key, { count: successCount }));
     }
     await refreshDocs();
     setUploading(false);
@@ -126,9 +129,9 @@ export function KBDetailPage() {
     if (!deleteDocTarget) return;
     try {
       await documentsApi.delete(deleteDocTarget.id);
-      showToast(`"${deleteDocTarget.title}" deleted`);
+      showToast(tx('toast.docDeleted', { title: deleteDocTarget.title }));
     } catch {
-      showToast('Failed to delete document', 'error');
+      showToast(tx('toast.docDeleteFailed'), 'error');
     }
     setDeleteDocTarget(null);
     await refreshDocs();
@@ -138,10 +141,10 @@ export function KBDetailPage() {
     if (!id) return;
     try {
       await kbApi.delete(id);
-      showToast(`"${kb?.name}" deleted`);
+      showToast(tx('toast.kbDeleted', { name: kb?.name ?? '' }));
       navigate('/');
     } catch {
-      showToast('Failed to delete knowledge base', 'error');
+      showToast(tx('toast.kbDeleteFailed'), 'error');
     }
   }
 
@@ -154,9 +157,9 @@ export function KBDetailPage() {
       setShareEmail('');
       const { data } = await kbApi.listShares(id);
       setShares(data);
-      showToast('Access granted');
+      showToast(tx('toast.accessGranted'));
     } catch (e: any) {
-      setShareError(e?.response?.data?.detail ?? 'Failed to share');
+      setShareError(e?.response?.data?.detail ?? tx('toast.shareFailed'));
     } finally {
       setSharing(false);
     }
@@ -168,12 +171,13 @@ export function KBDetailPage() {
       await kbApi.unshare(id, userId);
       setShares((prev) => prev.filter((s) => s.shared_with_user_id !== userId));
     } catch {
-      showToast('Failed to remove access', 'error');
+      showToast(tx('toast.unshareFailed'), 'error');
     }
   }
 
+  const locale = lang === 'uk' ? 'uk-UA' : 'en-US';
   const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 
   const chunkCount = docs.reduce((sum, d) => sum + d.chunk_count, 0);
   const isOwner = kb?.permission === 'owner';
@@ -208,7 +212,7 @@ export function KBDetailPage() {
         onMouseLeave={(e) => (e.currentTarget.style.color = t.textSec)}
       >
         <ArrowLeft size={15} />
-        All Knowledge Bases
+        {tx('kb.back')}
       </button>
 
       {/* Header */}
@@ -224,7 +228,7 @@ export function KBDetailPage() {
                 background: t.accentSoft, color: t.accent, fontWeight: 600,
                 textTransform: 'uppercase', letterSpacing: '0.04em',
               }}>
-                Shared by {kb.shared_by_name}
+                {tx('kb.sharedBy', { name: kb.shared_by_name })}
               </span>
             )}
           </div>
@@ -234,12 +238,11 @@ export function KBDetailPage() {
             </p>
           )}
           <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
-            <HeaderStat label="documents" value={docs.length} t={t} />
-            <HeaderStat label="chunks" value={chunkCount} t={t} />
+            <HeaderStat label={tx('kb.stat.documents')} value={docs.length} t={t} />
+            <HeaderStat label={tx('kb.stat.chunks')} value={chunkCount} t={t} />
           </div>
         </div>
 
-        {/* Action buttons — owner only */}
         {isOwner && (
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -256,7 +259,7 @@ export function KBDetailPage() {
               onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
             >
               <Share2 size={13} />
-              Share
+              {tx('kb.btn.share')}
             </button>
             <button
               onClick={() => setDeleteKbOpen(true)}
@@ -278,13 +281,12 @@ export function KBDetailPage() {
               }}
             >
               <Trash2 size={13} />
-              Delete KB
+              {tx('kb.btn.deleteKB')}
             </button>
           </div>
         )}
       </div>
 
-      {/* Upload zone — owner and editor only */}
       {canWrite && (
         <div style={{ marginBottom: 28 }}>
           <UploadZone onFiles={handleUpload} disabled={uploading} />
@@ -295,17 +297,19 @@ export function KBDetailPage() {
       {docs.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 0', gap: 10 }}>
           <FileText size={36} color={t.textTri} strokeWidth={1.5} />
-          <p style={{ fontSize: 14, color: t.textSec, fontFamily: FONT, margin: 0 }}>No documents yet</p>
+          <p style={{ fontSize: 14, color: t.textSec, fontFamily: FONT, margin: 0 }}>
+            {tx('kb.empty.title')}
+          </p>
           {canWrite && (
             <p style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, margin: 0 }}>
-              Drop files above to get started
+              {tx('kb.empty.subtitle')}
             </p>
           )}
         </div>
       ) : (
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, color: t.textTri, fontFamily: FONT, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Documents
+            {tx('kb.docs.heading')}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {docs.map((doc) => (
@@ -326,32 +330,29 @@ export function KBDetailPage() {
         isOpen={!!deleteDocTarget}
         onClose={() => setDeleteDocTarget(null)}
         onConfirm={handleDeleteDoc}
-        title="Delete Document"
-        message={`Delete "${deleteDocTarget?.title}"? All associated chunks and embeddings will be removed.`}
-        confirmLabel="Delete"
+        title={tx('kb.deleteDoc.title')}
+        message={tx('kb.deleteDoc.message', { title: deleteDocTarget?.title ?? '' })}
       />
 
       <ConfirmDialog
         isOpen={deleteKbOpen}
         onClose={() => setDeleteKbOpen(false)}
         onConfirm={handleDeleteKb}
-        title="Delete Knowledge Base"
-        message={`Delete "${kb?.name}"? This will permanently remove all ${docs.length} document(s) and their embeddings.`}
-        confirmLabel="Delete"
+        title={tx('kb.deleteKb.title')}
+        message={tx('kb.deleteKb.message', { name: kb?.name ?? '', count: docs.length })}
       />
 
       {/* Share modal */}
       <Modal
         isOpen={shareOpen}
         onClose={() => { setShareOpen(false); setShareEmail(''); setShareError(''); }}
-        title="Share Knowledge Base"
+        title={tx('kb.share.title')}
         maxWidth={480}
       >
-        {/* Invite row */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 500, color: t.textSec, fontFamily: FONT, display: 'block', marginBottom: 6 }}>
-              Invite by email
+              {tx('kb.share.emailLabel')}
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -360,7 +361,7 @@ export function KBDetailPage() {
                 value={shareEmail}
                 onChange={(e) => setShareEmail(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleShare()}
-                placeholder="colleague@example.com"
+                placeholder={tx('kb.share.emailPlaceholder')}
                 style={{
                   flex: 1, padding: '8px 12px', borderRadius: 8,
                   border: `1px solid ${t.border}`, background: t.surfaceAlt,
@@ -378,8 +379,8 @@ export function KBDetailPage() {
                   outline: 'none', cursor: 'pointer',
                 }}
               >
-                <option value="viewer">Viewer</option>
-                <option value="editor">Editor</option>
+                <option value="viewer">{tx('permission.viewer')}</option>
+                <option value="editor">{tx('permission.editor')}</option>
               </select>
               <button
                 onClick={handleShare}
@@ -393,7 +394,7 @@ export function KBDetailPage() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {sharing ? 'Sharing…' : 'Share'}
+                {sharing ? tx('kb.share.sharing') : tx('kb.share.shareBtn')}
               </button>
             </div>
             {shareError && (
@@ -401,15 +402,13 @@ export function KBDetailPage() {
             )}
           </div>
 
-          {/* Permission legend */}
           <p style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, margin: 0 }}>
-            Viewer — can search and chat · Editor — can also upload documents
+            {tx('kb.share.legend')}
           </p>
 
-          {/* Current shares */}
           <div>
             <p style={{ fontSize: 11, fontWeight: 600, color: t.textTri, fontFamily: FONT, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              People with access
+              {tx('kb.share.peopleWithAccess')}
             </p>
             {sharesLoading ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -417,25 +416,24 @@ export function KBDetailPage() {
               </div>
             ) : shares.length === 0 ? (
               <p style={{ fontSize: 13, color: t.textTri, fontFamily: FONT, margin: 0 }}>
-                Only you have access to this knowledge base.
+                {tx('kb.share.onlyYou')}
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {/* Owner row */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '8px 10px', borderRadius: 8,
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 500, color: t.text, fontFamily: FONT, margin: 0 }}>
-                      You
+                      {tx('kb.share.you')}
                     </p>
                   </div>
                   <span style={{
                     fontSize: 11, fontFamily: MONO, padding: '2px 8px', borderRadius: 4,
                     background: t.accentSoft, color: t.accent, fontWeight: 600,
                   }}>
-                    Owner
+                    {tx('kb.share.owner')}
                   </span>
                 </div>
                 {shares.map((s) => (
@@ -463,6 +461,7 @@ function ShareRow({
   onRemove: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const tx = useT();
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -486,7 +485,7 @@ function ShareRow({
         fontSize: 11, fontFamily: MONO, padding: '2px 8px', borderRadius: 4,
         background: t.surfaceAlt, color: t.textSec, flexShrink: 0,
       }}>
-        {share.permission}
+        {tx(`permission.${share.permission}`)}
       </span>
       <button
         onClick={onRemove}
@@ -513,6 +512,7 @@ function DocRow({
   onDelete: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const tx = useT();
 
   return (
     <div
@@ -535,7 +535,7 @@ function DocRow({
           {doc.title}
         </p>
         <p style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, margin: '2px 0 0' }}>
-          {doc.chunk_count > 0 ? `${doc.chunk_count} chunks · ` : ''}{fmtDate(doc.created_at)}
+          {doc.chunk_count > 0 ? `${doc.chunk_count} ${tx('kb.doc.chunks')} · ` : ''}{fmtDate(doc.created_at)}
         </p>
       </div>
 

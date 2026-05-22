@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Database, Trash2, Bell, Check, X } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useT, useLang } from '../contexts/LangContext';
 import { FONT } from '../styles/theme';
 import { kbApi, KBResponse, KBInvitationResponse } from '../api/knowledgeBases';
 import { documentsApi } from '../api/documents';
@@ -17,6 +18,8 @@ interface KBCard extends KBResponse {
 
 export function DashboardPage() {
   const t = useTheme();
+  const tx = useT();
+  const { lang } = useLang();
   const navigate = useNavigate();
   const { showToast } = useToast();
 
@@ -57,9 +60,9 @@ export function DashboardPage() {
       await kbApi.acceptInvitation(shareId);
       setInvitations((prev) => prev.filter((i) => i.share_id !== shareId));
       await loadKBs();
-      showToast('Invitation accepted');
+      showToast(tx('toast.invitationAccepted'));
     } catch {
-      showToast('Failed to accept invitation', 'error');
+      showToast(tx('toast.invitationAcceptFailed'), 'error');
     } finally {
       setActingOn(null);
     }
@@ -70,9 +73,9 @@ export function DashboardPage() {
     try {
       await kbApi.declineInvitation(shareId);
       setInvitations((prev) => prev.filter((i) => i.share_id !== shareId));
-      showToast('Invitation declined');
+      showToast(tx('toast.invitationDeclined'));
     } catch {
-      showToast('Failed to decline invitation', 'error');
+      showToast(tx('toast.invitationDeclineFailed'), 'error');
     } finally {
       setActingOn(null);
     }
@@ -95,14 +98,14 @@ export function DashboardPage() {
       );
       setKbs(cards);
     } catch {
-      showToast('Failed to load knowledge bases', 'error');
+      showToast(tx('toast.kbLoadFailed'), 'error');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleCreate() {
-    if (!createName.trim()) { setCreateError('Name is required'); return; }
+    if (!createName.trim()) { setCreateError(tx('dashboard.create.nameRequired')); return; }
     setCreating(true);
     setCreateError('');
     try {
@@ -110,10 +113,10 @@ export function DashboardPage() {
       setCreateOpen(false);
       setCreateName('');
       setCreateDesc('');
-      showToast('Knowledge base created');
+      showToast(tx('toast.kbCreated'));
       await loadKBs();
     } catch (e: any) {
-      const msg = e?.response?.data?.detail ?? 'Failed to create knowledge base';
+      const msg = e?.response?.data?.detail ?? tx('toast.kbCreateFailed');
       setCreateError(msg);
       showToast(msg, 'error');
     } finally {
@@ -125,26 +128,31 @@ export function DashboardPage() {
     if (!deleteTarget) return;
     try {
       await kbApi.delete(deleteTarget.id);
-      showToast(`"${deleteTarget.name}" deleted`);
+      showToast(tx('toast.kbDeleted', { name: deleteTarget.name }));
     } catch {
-      showToast('Failed to delete knowledge base', 'error');
+      showToast(tx('toast.kbDeleteFailed'), 'error');
     }
     setDeleteTarget(null);
     await loadKBs();
   }
 
+  const locale = lang === 'uk' ? 'uk-UA' : 'en-US';
   const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const bannerKey = invitations.length === 1
+    ? 'dashboard.invitations.banner.one'
+    : 'dashboard.invitations.banner.many';
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: t.text, fontFamily: FONT, margin: 0 }}>
-            Knowledge Bases
+            {tx('dashboard.heading')}
           </h1>
           <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, marginTop: 4, marginBottom: 0 }}>
-            Manage your document collections
+            {tx('dashboard.subtitle')}
           </p>
         </div>
         <button
@@ -160,7 +168,7 @@ export function DashboardPage() {
           onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
         >
           <Plus size={15} />
-          New KB
+          {tx('dashboard.newKB')}
         </button>
       </div>
 
@@ -173,7 +181,7 @@ export function DashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Bell size={15} color={t.accent} />
             <span style={{ fontSize: 13, fontFamily: FONT, color: t.text }}>
-              You have {invitations.length} pending invitation{invitations.length !== 1 ? 's' : ''}
+              {tx(bannerKey, { count: invitations.length })}
             </span>
           </div>
           <button
@@ -184,7 +192,7 @@ export function DashboardPage() {
               fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer',
             }}
           >
-            View
+            {tx('dashboard.invitations.view')}
           </button>
         </div>
       )}
@@ -192,11 +200,15 @@ export function DashboardPage() {
       {loading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {[1, 2, 3].map((i) => (
-            <div key={i} style={{ background: t.surface, borderRadius: 12, padding: 20, border: `1px solid ${t.border}` }}>
-              <Skeleton width={120} height={14} style={{ marginBottom: 10 }} />
-              <Skeleton width="80%" height={11} style={{ marginBottom: 20 }} />
+            <div key={i} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <Skeleton width={32} height={32} style={{ borderRadius: 8 }} />
+                <Skeleton width={120} height={14} />
+              </div>
+              <Skeleton width="100%" height={11} style={{ marginBottom: 6 }} />
+              <Skeleton width="70%" height={11} style={{ marginBottom: 16 }} />
               <div style={{ display: 'flex', gap: 16 }}>
-                <Skeleton width={60} height={11} />
+                <Skeleton width={40} height={11} />
                 <Skeleton width={60} height={11} />
               </div>
             </div>
@@ -205,8 +217,12 @@ export function DashboardPage() {
       ) : kbs.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 12 }}>
           <Database size={40} color={t.textTri} strokeWidth={1.5} />
-          <p style={{ fontSize: 14, color: t.textSec, fontFamily: FONT, margin: 0 }}>No knowledge bases yet</p>
-          <p style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, margin: 0 }}>Create one to start uploading documents</p>
+          <p style={{ fontSize: 14, color: t.textSec, fontFamily: FONT, margin: 0 }}>
+            {tx('dashboard.empty.title')}
+          </p>
+          <p style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, margin: 0 }}>
+            {tx('dashboard.empty.subtitle')}
+          </p>
           <button
             onClick={() => { setCreateOpen(true); setCreateError(''); }}
             style={{
@@ -216,7 +232,7 @@ export function DashboardPage() {
               fontSize: 13, fontWeight: 500, fontFamily: FONT, cursor: 'pointer',
             }}
           >
-            Create knowledge base
+            {tx('dashboard.empty.create')}
           </button>
         </div>
       ) : (
@@ -276,11 +292,11 @@ export function DashboardPage() {
                         background: t.accentSoft, color: t.accent,
                         textTransform: 'uppercase', letterSpacing: '0.04em',
                       }}>
-                        Shared
+                        {tx('dashboard.card.shared')}
                       </span>
                       {kb.shared_by_name && (
                         <span style={{ fontSize: 11, color: t.textTri, fontFamily: FONT }}>
-                          by {kb.shared_by_name}
+                          {tx('dashboard.card.sharedBy', { name: kb.shared_by_name })}
                         </span>
                       )}
                     </div>
@@ -302,30 +318,93 @@ export function DashboardPage() {
               )}
 
               <div style={{ display: 'flex', gap: 16, marginTop: kb.description ? 0 : 12 }}>
-                <KBStat label="docs" value={kb.docCount} t={t} />
-                <KBStat label="chunks" value={kb.chunkCount} t={t} />
+                <KBStat label={tx('dashboard.card.docs')} value={kb.docCount} t={t} />
+                <KBStat label={tx('dashboard.card.chunks')} value={kb.chunkCount} t={t} />
               </div>
 
               <p style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, margin: '10px 0 0' }}>
-                Updated {fmtDate(kb.updated_at)}
+                {tx('dashboard.card.updated', { date: fmtDate(kb.updated_at) })}
               </p>
             </div>
           ))}
         </div>
       )}
 
-      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title="New Knowledge Base" maxWidth={440}>
+      {/* Invitations modal */}
+      <Modal isOpen={invitationsOpen} onClose={() => setInvitationsOpen(false)} title={tx('dashboard.invitations.title')} maxWidth={480}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {invitations.length === 0 ? (
+            <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, margin: 0, textAlign: 'center', padding: '20px 0' }}>
+              {tx('dashboard.invitations.empty')}
+            </p>
+          ) : (
+            invitations.map((inv) => (
+              <div
+                key={inv.share_id}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 14px', borderRadius: 8,
+                  background: t.surfaceAlt, border: `1px solid ${t.border}`,
+                  gap: 12,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: FONT, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {inv.kb_name}
+                  </p>
+                  <p style={{ fontSize: 11, color: t.textSec, fontFamily: FONT, margin: 0 }}>
+                    {tx('kb.sharedBy', { name: inv.owner_name })} &middot; {tx(`permission.${inv.permission}`)}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleDecline(inv.share_id)}
+                    disabled={actingOn === inv.share_id}
+                    title={tx('confirm.cancel')}
+                    style={{
+                      width: 30, height: 30, borderRadius: 6, border: `1px solid ${t.border}`,
+                      background: 'transparent', color: t.textSec,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: actingOn === inv.share_id ? 'not-allowed' : 'pointer',
+                      opacity: actingOn === inv.share_id ? 0.5 : 1,
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                  <button
+                    onClick={() => handleAccept(inv.share_id)}
+                    disabled={actingOn === inv.share_id}
+                    title={tx('toast.invitationAccepted')}
+                    style={{
+                      width: 30, height: 30, borderRadius: 6, border: 'none',
+                      background: t.accent, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: actingOn === inv.share_id ? 'not-allowed' : 'pointer',
+                      opacity: actingOn === inv.share_id ? 0.5 : 1,
+                    }}
+                  >
+                    <Check size={13} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      {/* Create modal */}
+      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title={tx('dashboard.create.title')} maxWidth={440}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 500, color: t.textSec, fontFamily: FONT, display: 'block', marginBottom: 6 }}>
-              Name *
+              {tx('dashboard.create.nameLabel')}
             </label>
             <input
               autoFocus
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              placeholder="e.g. Product Documentation"
+              placeholder={tx('dashboard.create.namePlaceholder')}
               style={{
                 width: '100%', padding: '9px 12px', borderRadius: 8,
                 border: `1px solid ${t.border}`, background: t.surfaceAlt,
@@ -336,12 +415,12 @@ export function DashboardPage() {
           </div>
           <div>
             <label style={{ fontSize: 12, fontWeight: 500, color: t.textSec, fontFamily: FONT, display: 'block', marginBottom: 6 }}>
-              Description
+              {tx('dashboard.create.descLabel')}
             </label>
             <textarea
               value={createDesc}
               onChange={(e) => setCreateDesc(e.target.value)}
-              placeholder="Optional description"
+              placeholder={tx('dashboard.create.descPlaceholder')}
               rows={3}
               style={{
                 width: '100%', padding: '9px 12px', borderRadius: 8,
@@ -364,7 +443,7 @@ export function DashboardPage() {
                 fontSize: 13, fontFamily: FONT, cursor: 'pointer',
               }}
             >
-              Cancel
+              {tx('dashboard.create.cancel')}
             </button>
             <button
               onClick={handleCreate}
@@ -377,70 +456,9 @@ export function DashboardPage() {
                 opacity: creating || !createName.trim() ? 0.65 : 1,
               }}
             >
-              {creating ? 'Creating…' : 'Create'}
+              {creating ? tx('dashboard.create.creating') : tx('dashboard.create.submit')}
             </button>
           </div>
-        </div>
-      </Modal>
-
-      <Modal isOpen={invitationsOpen} onClose={() => setInvitationsOpen(false)} title="Pending Invitations" maxWidth={480}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {invitations.length === 0 ? (
-            <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, margin: 0, textAlign: 'center', padding: '20px 0' }}>
-              No pending invitations
-            </p>
-          ) : (
-            invitations.map((inv) => (
-              <div
-                key={inv.share_id}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '12px 14px', borderRadius: 8,
-                  background: t.surfaceAlt, border: `1px solid ${t.border}`,
-                  gap: 12,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: FONT, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {inv.kb_name}
-                  </p>
-                  <p style={{ fontSize: 11, color: t.textSec, fontFamily: FONT, margin: 0 }}>
-                    Shared by {inv.owner_name} &middot; {inv.permission}
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button
-                    onClick={() => handleDecline(inv.share_id)}
-                    disabled={actingOn === inv.share_id}
-                    title="Decline"
-                    style={{
-                      width: 30, height: 30, borderRadius: 6, border: `1px solid ${t.border}`,
-                      background: 'transparent', color: t.textSec,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: actingOn === inv.share_id ? 'not-allowed' : 'pointer',
-                      opacity: actingOn === inv.share_id ? 0.5 : 1,
-                    }}
-                  >
-                    <X size={13} />
-                  </button>
-                  <button
-                    onClick={() => handleAccept(inv.share_id)}
-                    disabled={actingOn === inv.share_id}
-                    title="Accept"
-                    style={{
-                      width: 30, height: 30, borderRadius: 6, border: 'none',
-                      background: t.accent, color: '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: actingOn === inv.share_id ? 'not-allowed' : 'pointer',
-                      opacity: actingOn === inv.share_id ? 0.5 : 1,
-                    }}
-                  >
-                    <Check size={13} />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
         </div>
       </Modal>
 
@@ -448,9 +466,8 @@ export function DashboardPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Delete Knowledge Base"
-        message={`Delete "${deleteTarget?.name}"? This will permanently remove all documents and embeddings. This action cannot be undone.`}
-        confirmLabel="Delete"
+        title={tx('dashboard.deleteKb.title')}
+        message={tx('dashboard.deleteKb.message', { name: deleteTarget?.name ?? '' })}
       />
     </div>
   );

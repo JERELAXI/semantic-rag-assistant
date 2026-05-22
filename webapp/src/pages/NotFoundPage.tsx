@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { Home } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useT } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 
 export function NotFoundPage() {
   const t = useTheme();
+  const tx = useT();
   const navigate = useNavigate();
 
   return (
@@ -19,10 +21,10 @@ export function NotFoundPage() {
         404
       </span>
       <p style={{ fontSize: 16, fontWeight: 600, color: t.text, fontFamily: FONT, margin: 0 }}>
-        Page not found
+        {tx('notFound.title')}
       </p>
       <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, margin: 0 }}>
-        The page you&apos;re looking for doesn&apos;t exist.
+        {tx('notFound.message')}
       </p>
       <button
         onClick={() => navigate('/')}
@@ -34,7 +36,7 @@ export function NotFoundPage() {
         }}
       >
         <Home size={14} />
-        Go home
+        {tx('notFound.button')}
       </button>
     </div>
   );
