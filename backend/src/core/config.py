@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     contextual_chunking_enabled: bool = True
     hyde_enabled: bool = True
     query_expansion_enabled: bool = True
+    semantic_chunking_enabled: bool = True
 
     # Upload limits
     max_file_size_mb: int = 50

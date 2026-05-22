@@ -23,7 +23,6 @@ _RERANKER_CANDIDATE_POOL = 20
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 
 _MAX_HISTORY = 20
-_CONTENT_EXCERPT_LEN = 200
 
 _CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 
@@ -150,7 +149,8 @@ class RAGPipeline:
                 document_title=r.document_title,
                 # Show the raw chunk to the user — `r.content` may carry a "Context: ..."
                 # prefix added during contextual chunking; the user should never see that.
-                content_excerpt=(r.metadata.get("original_content") or r.content)[:_CONTENT_EXCERPT_LEN],
+                # Full text — citation panel scrolls.
+                content_excerpt=r.metadata.get("original_content") or r.content,
                 # Show pre-fusion vector cosine similarity (e.g. 0.58 → "58% match").
                 # Fall back to `score` for FTS-only chunks where no vector similarity exists.
                 relevance_score=r.vector_score if r.vector_score is not None else r.score,

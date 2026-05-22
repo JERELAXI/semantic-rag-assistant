@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import uuid
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.chat.schemas import SearchResult
 from src.core.config import settings
-from src.core.embeddings import embed_query
+from src.core.embeddings import embed_query, embed_texts
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,10 @@ _EXPAND_PROMPT = (
 # Matches alphanumeric/underscore runs (Unicode-aware) — anything else becomes a separator.
 # Drops punctuation/operators that would break to_tsquery() syntax.
 _TSQUERY_TOKEN = re.compile(r"\w+", re.UNICODE)
+
+
+async def _empty_str() -> str:
+    return ""
 
 
 def _build_or_tsquery(query: str) -> str:
@@ -195,14 +200,34 @@ class HybridRetriever:
         top_k: int,
         candidate_pool: int = _DEFAULT_CANDIDATE_POOL,
     ) -> list[SearchResult]:
-        """Run hybrid search for the original query + 3 expanded variants, merge by chunk_id."""
-        variants = await self.expand_query(query)
+        """Run hybrid search for the original query + expanded variants, merge by chunk_id.
+
+        Three concurrent phases instead of fully sequential LLM/DB calls:
+          1. expand_query + HyDE(original) in parallel
+          2. Embed [hyde_or_query, *variants] in a single batch call
+          3. All vector + FTS searches in parallel
+        HyDE is applied to the original query only; variants ride raw embeddings.
+        """
+        expand_task = self.expand_query(query)
+        hyde_task = self.generate_hypothetical_answer(query) if settings.hyde_enabled else _empty_str()
+        variants, hypothetical = await asyncio.gather(expand_task, hyde_task)
+
         all_queries = [query, *variants]
+        original_text_to_embed = hypothetical or query
+        embeddings = await embed_texts([original_text_to_embed, *variants], input_type="query")
+
+        search_tasks: list = []
+        for emb, q in zip(embeddings, all_queries):
+            search_tasks.append(self.vector_search(emb, knowledge_base_id, candidate_pool))
+            search_tasks.append(self.fts_search(q, knowledge_base_id, candidate_pool))
+        search_results = await asyncio.gather(*search_tasks)
 
         merged: dict[uuid.UUID, SearchResult] = {}
-        for q in all_queries:
-            results = await self.hybrid_search(q, knowledge_base_id, top_k=candidate_pool, candidate_pool=candidate_pool)
-            for r in results:
+        for i in range(len(all_queries)):
+            vec_res = search_results[2 * i]
+            fts_res = search_results[2 * i + 1]
+            fused = _rrf_fuse(vec_res, fts_res, candidate_pool)
+            for r in fused:
                 existing = merged.get(r.chunk_id)
                 if existing is None or r.score > existing.score:
                     merged[r.chunk_id] = r
