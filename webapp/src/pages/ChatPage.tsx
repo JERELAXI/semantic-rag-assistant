@@ -137,6 +137,14 @@ export function ChatPage() {
               citations: accCitations,
             },
           ]);
+          // Apply auto-generated session title from the SSE payload instantly,
+          // before the loadSessions refetch finishes — keeps the sidebar in sync.
+          if (event.session_title) {
+            const newTitle = event.session_title;
+            setAllSessions((prev) =>
+              prev.map((s) => (s.id === activeSessionId ? { ...s, title: newTitle } : s)),
+            );
+          }
           await loadSessions();
         }
       }

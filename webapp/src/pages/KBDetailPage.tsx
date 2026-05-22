@@ -88,8 +88,12 @@ export function KBDetailPage() {
         await documentsApi.upload(file, title, id);
         successCount++;
       } catch (e: any) {
-        const msg = e?.response?.data?.detail ?? 'Upload failed';
-        showToast(`${file.name}: ${msg}`, 'error');
+        if (e?.response?.status === 409) {
+          showToast(`"${file.name}": Document already exists in this knowledge base`, 'error');
+        } else {
+          const msg = e?.response?.data?.detail ?? 'Upload failed';
+          showToast(`${file.name}: ${msg}`, 'error');
+        }
       }
     }
     if (successCount > 0) {
