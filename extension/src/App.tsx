@@ -239,7 +239,7 @@ function AppShell({
   const [streaming, setStreaming] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const [streamCitations, setStreamCitations] = useState<Citation[]>([])
-  const [activeCit, setActiveCit] = useState<number | null>(null)
+  const [activeCit, setActiveCit] = useState<{ msgId: string; n: number } | null>(null)
 
   useEffect(() => {
     listKBs()
@@ -343,7 +343,9 @@ function AppShell({
             streamCitations={streamCitations}
             sessionId={sessionId}
             activeCit={activeCit}
-            onCitClick={(n) => setActiveCit(activeCit === n ? null : n)}
+            onCitClick={(n, msgId) => setActiveCit(
+              activeCit?.msgId === msgId && activeCit?.n === n ? null : { msgId, n },
+            )}
             onSend={handleSend}
           />
         ) : (
@@ -356,10 +358,10 @@ function AppShell({
         <IngestConfirm
           t={t}
           data={ingestData}
+          kbs={kbs}
           onClose={onIngestClear}
           onSuccess={async (kbId) => {
             onIngestClear()
-            // Refresh KB list then switch to Browser Pages KB
             const updated = await listKBs().catch(() => kbs)
             setKbs(updated)
             await handleKBSelect(kbId)
@@ -512,8 +514,8 @@ function ChatView({
   streamContent: string
   streamCitations: Citation[]
   sessionId: string | null
-  activeCit: number | null
-  onCitClick: (n: number) => void
+  activeCit: { msgId: string; n: number } | null
+  onCitClick: (n: number, msgId: string) => void
   onSend: (content: string) => void
 }) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -563,7 +565,7 @@ function ChatView({
             msg={msg}
             t={t}
             activeCit={activeCit}
-            onCitClick={onCitClick}
+            onCitClick={(n) => onCitClick(n, msg.id)}
           />
         ))}
 
@@ -572,16 +574,20 @@ function ChatView({
             msg={{ id: '__streaming', role: 'assistant', content: streamContent, citations: streamCitations }}
             t={t}
             activeCit={activeCit}
-            onCitClick={onCitClick}
+            onCitClick={(n) => onCitClick(n, '__streaming')}
             isStreaming
           />
         )}
 
-        {/* Citation popup — floats inside the message area */}
+        {/* Citation popup — floats inside the message area, uses the source message's citations */}
         {activeCit !== null && (() => {
-          const all = [...messages].reverse().find((m) => m.role === 'assistant')?.citations ?? streamCitations
-          const cit = all[activeCit - 1]
-          return cit ? <CitationPopup t={t} citation={cit} index={activeCit} onClose={() => onCitClick(activeCit)} /> : null
+          const citations = activeCit.msgId === '__streaming'
+            ? streamCitations
+            : messages.find(m => m.id === activeCit.msgId)?.citations ?? []
+          const cit = citations[activeCit.n - 1]
+          return cit
+            ? <CitationPopup t={t} citation={cit} index={activeCit.n} onClose={() => onCitClick(activeCit.n, activeCit.msgId)} />
+            : null
         })()}
 
         <div ref={messagesEndRef} />
@@ -602,7 +608,7 @@ function ChatView({
 function MessageRow({
   msg, t, activeCit, onCitClick, isStreaming = false,
 }: {
-  msg: Message; t: Tokens; activeCit: number | null
+  msg: Message; t: Tokens; activeCit: { msgId: string; n: number } | null
   onCitClick: (n: number) => void; isStreaming?: boolean
 }) {
   return (
@@ -633,7 +639,7 @@ function MessageRow({
               ))}
             </div>
           ) : (
-            <RichText content={msg.content} activeCit={activeCit} onCitClick={onCitClick} t={t} />
+            <RichText content={msg.content} msgId={msg.id} activeCit={activeCit} onCitClick={onCitClick} t={t} />
           )}
 
           {/* Citation cards */}
@@ -644,7 +650,7 @@ function MessageRow({
                   key={cit.chunk_id}
                   citation={cit}
                   index={idx + 1}
-                  active={activeCit === idx + 1}
+                  active={activeCit?.msgId === msg.id && activeCit?.n === idx + 1}
                   onClick={() => onCitClick(idx + 1)}
                   t={t}
                 />
@@ -660,8 +666,8 @@ function MessageRow({
 // ── Rich text renderer ────────────────────────────────────────────────────
 
 function RichText({
-  content, activeCit, onCitClick, t,
-}: { content: string; activeCit: number | null; onCitClick: (n: number) => void; t: Tokens }) {
+  content, msgId, activeCit, onCitClick, t,
+}: { content: string; msgId: string; activeCit: { msgId: string; n: number } | null; onCitClick: (n: number) => void; t: Tokens }) {
   const parts = content.split(/(\[\d+\])/g)
 
   return (
@@ -670,7 +676,7 @@ function RichText({
         const match = part.match(/\[(\d+)\]/)
         if (match) {
           const n = parseInt(match[1])
-          const active = activeCit === n
+          const active = activeCit?.msgId === msgId && activeCit?.n === n
           return (
             <span
               key={i}
@@ -917,41 +923,43 @@ function InputBar({
 
 // ── Ingest confirm overlay ────────────────────────────────────────────────
 
-const BROWSER_PAGES_KB = 'Browser Pages'
-
-async function findOrCreateBrowserPagesKB(): Promise<KBItem> {
-  const kbs = await listKBs()
-  const existing = kbs.find((kb) => kb.name === BROWSER_PAGES_KB)
-  if (existing) return existing
-  return createKB(BROWSER_PAGES_KB)
-}
+const NEW_KB_SENTINEL = '__new'
 
 function IngestConfirm({
-  t, data, onClose, onSuccess, onSessionExpired,
+  t, data, kbs, onClose, onSuccess, onSessionExpired,
 }: {
-  t: Tokens; data: IngestData
+  t: Tokens; data: IngestData; kbs: KBItem[]
   onClose: () => void
   onSuccess: (kbId: string) => void
   onSessionExpired: () => void
 }) {
+  const [selectedKbId, setSelectedKbId] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
 
   const isUrlIngest = !!data.fileUrl
+  const newKbName = `Page: ${data.title.slice(0, 60)}`
 
   const handleConfirm = async () => {
+    if (!selectedKbId) { setError('Please select a knowledge base.'); return }
     setLoading(true)
     setError('')
     try {
-      const kb = await findOrCreateBrowserPagesKB()
-      if (isUrlIngest) {
-        await ingestUrl(kb.id, data.title, data.fileUrl!)
+      let kbId: string
+      if (selectedKbId === NEW_KB_SENTINEL) {
+        const created = await createKB(newKbName)
+        kbId = created.id
       } else {
-        await uploadPageText(kb.id, data.title, data.text!)
+        kbId = selectedKbId
+      }
+      if (isUrlIngest) {
+        await ingestUrl(kbId, data.title, data.fileUrl!)
+      } else {
+        await uploadPageText(kbId, data.title, data.text!)
       }
       setDone(true)
-      setTimeout(() => onSuccess(kb.id), 1400)
+      setTimeout(() => onSuccess(kbId), 1400)
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'Session expired') { onSessionExpired(); return }
       setError(e instanceof Error ? e.message : 'Failed — file may require login or download permission. Try downloading and uploading manually via the webapp.')
@@ -981,7 +989,7 @@ function IngestConfirm({
       {/* Page info */}
       <div style={{
         padding: '11px 13px', borderRadius: 10, background: t.surface,
-        border: `1px solid ${t.border}`, marginBottom: 16,
+        border: `1px solid ${t.border}`, marginBottom: 14,
       }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: t.text, fontFamily: SANS, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {data.title}
@@ -1010,16 +1018,35 @@ function IngestConfirm({
         )}
       </div>
 
-      {/* Destination hint */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 7, marginBottom: 18,
-        fontSize: 12, color: t.textSecondary, fontFamily: SANS,
-      }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2" strokeLinecap="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-        </svg>
-        Will be added to <strong style={{ color: t.text, fontWeight: 600, marginLeft: 3 }}>{BROWSER_PAGES_KB}</strong>
+      {/* KB selector */}
+      <div style={{ marginBottom: 18 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, fontFamily: SANS, display: 'block', marginBottom: 5 }}>
+          Add to
+        </label>
+        <div style={{ position: 'relative' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.textTertiary} strokeWidth="2"
+            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+          <select
+            value={selectedKbId}
+            onChange={(e) => setSelectedKbId(e.target.value)}
+            style={{
+              width: '100%', padding: '7px 10px 7px 28px', borderRadius: 8,
+              border: `1px solid ${t.border}`, background: t.surface,
+              color: selectedKbId ? t.text : t.textTertiary,
+              fontSize: 12, fontFamily: SANS, outline: 'none', cursor: 'pointer',
+              appearance: 'none',
+            }}
+          >
+            <option value="">Choose knowledge base…</option>
+            {kbs.map((kb) => (
+              <option key={kb.id} value={kb.id}>{kb.name}</option>
+            ))}
+            <option value={NEW_KB_SENTINEL}>+ Create new KB "{newKbName}"</option>
+          </select>
+        </div>
       </div>
 
       {error && (
@@ -1044,13 +1071,13 @@ function IngestConfirm({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={loading}
+            disabled={loading || !selectedKbId}
             style={{
               flex: 1, padding: '9px 0', borderRadius: 8, border: 'none',
               background: t.accent, color: '#fff',
               fontSize: 13, fontWeight: 600, fontFamily: SANS,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.65 : 1,
+              cursor: loading || !selectedKbId ? 'not-allowed' : 'pointer',
+              opacity: loading || !selectedKbId ? 0.65 : 1,
             }}
           >
             {loading
