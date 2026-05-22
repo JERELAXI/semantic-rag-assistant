@@ -26,7 +26,6 @@ export function ChatPage() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
   const [streamingContent, setStreamingContent] = useState('');
-  const [streamingCitations, setStreamingCitations] = useState<CitationResponse[]>([]);
   const [streaming, setStreaming] = useState(false);
 
   const [activeCitation, setActiveCitation] = useState<{ citation: CitationResponse; index: number; messageId: string } | null>(null);
@@ -104,7 +103,6 @@ export function ChatPage() {
     if (!activeSessionId || streaming) return;
     setStreaming(true);
     setStreamingContent('');
-    setStreamingCitations([]);
 
     const userMsg: MessageResponse = {
       id: crypto.randomUUID(),
@@ -126,11 +124,9 @@ export function ChatPage() {
           setStreamingContent(accContent);
         } else if ('citations' in event) {
           accCitations = event.citations;
-          setStreamingCitations(accCitations);
         } else if ('done' in event) {
           const finalContent = event.final_content ?? accContent;
           setStreamingContent('');
-          setStreamingCitations([]);
           setMessages((prev) => [
             ...prev,
             {
@@ -147,7 +143,6 @@ export function ChatPage() {
     } catch {
       showToast('Streaming failed — please try again.', 'error');
       setStreamingContent('');
-      setStreamingCitations([]);
     } finally {
       setStreaming(false);
     }
@@ -346,12 +341,8 @@ export function ChatPage() {
                 <MessageBubble
                   role="assistant"
                   content={streamingContent}
-                  citations={streamingCitations}
+                  citations={[]}
                   streaming={true}
-                  onCitationClick={(cit, idx) => handleCitationClick(cit, idx, 'streaming')}
-                  activeCitationIndex={
-                    activeCitation?.messageId === 'streaming' ? activeCitation.index : null
-                  }
                 />
               )}
 
