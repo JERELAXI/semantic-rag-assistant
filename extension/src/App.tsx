@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { darkTokens, lightTokens, type Tokens, SANS, MONO } from './theme'
 import {
   login, storeTokens, clearTokens, isLoggedIn,
-  listKBs, createKB, createSession, uploadPageText,
+  listKBs, createKB, createSession, uploadPageText, getDocumentStatus,
   type KBItem,
 } from './api'
 import { streamMessage, type Citation } from './stream'
@@ -220,7 +220,7 @@ function AppShell({
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [ingestKbId, setIngestKbId] = useState('__auto')
   const [ingesting, setIngesting] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [processingDoc, setProcessingDoc] = useState<{ docId: string; kbId: string } | null>(null)
 
   useEffect(() => {
     listKBs()
@@ -261,22 +261,30 @@ function AppShell({
     setIngesting(true)
     try {
       let kbId = ingestKbId
+
       if (kbId === '__auto') {
+        // Always create a new unique KB — each page gets its own isolated KB.
+        // Naming: "Browser Pages", then "Browser Pages 1", "Browser Pages 2", …
         const all = await listKBs()
-        const found = all.find((kb) => kb.name === 'Browser Pages')
-        if (found) {
-          kbId = found.id
+        const base = 'Browser Pages'
+        const matches = all.filter((kb) => kb.name === base || /^Browser Pages \d+$/.test(kb.name))
+        let newName: string
+        if (matches.length === 0) {
+          newName = base
         } else {
-          const created = await createKB('Browser Pages')
-          kbId = created.id
-          setKbs((prev) => [...prev, created])
+          const nums = matches.map((kb) =>
+            kb.name === base ? 0 : parseInt(kb.name.match(/\d+$/)![0]),
+          )
+          newName = `${base} ${Math.max(...nums) + 1}`
         }
+        const created = await createKB(newName)
+        kbId = created.id
+        setKbs((prev) => [...prev, created])
       }
-      await uploadPageText(kbId, pageInfo.title, pageInfo.text)
-      await handleKBSelect(kbId)
+
+      const doc = await uploadPageText(kbId, pageInfo.title, pageInfo.text)
+      setProcessingDoc({ docId: doc.id, kbId })
       setBannerDismissed(true)
-      setToast('Document added')
-      setTimeout(() => setToast(null), 2500)
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'Session expired') onSessionExpired()
     } finally {
@@ -375,7 +383,15 @@ function AppShell({
       )}
 
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {view === 'chat' ? (
+        {processingDoc ? (
+          <ProcessingView
+            t={t}
+            docId={processingDoc.docId}
+            kbId={processingDoc.kbId}
+            onReady={(id) => { setProcessingDoc(null); handleKBSelect(id) }}
+            onDismiss={() => setProcessingDoc(null)}
+          />
+        ) : view === 'chat' ? (
           <ChatView
             t={t}
             messages={messages}
@@ -393,20 +409,6 @@ function AppShell({
           <SourcesView t={t} citations={lastCitations} />
         )}
       </div>
-
-      {toast && (
-        <div style={{
-          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-          background: t.accent, color: '#fff',
-          fontSize: 12, fontWeight: 600, fontFamily: SANS,
-          padding: '7px 16px', borderRadius: 20,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-          zIndex: 100, pointerEvents: 'none',
-          animation: 'fadeIn 0.2s ease-out', whiteSpace: 'nowrap',
-        }}>
-          {toast}
-        </div>
-      )}
 
     </div>
   )
@@ -614,6 +616,132 @@ function IngestBanner({
       >
         ×
       </button>
+    </div>
+  )
+}
+
+// ── Processing view ───────────────────────────────────────────────────────
+
+function ProcessingView({
+  t, docId, kbId, onReady, onDismiss,
+}: {
+  t: Tokens
+  docId: string
+  kbId: string
+  onReady: (kbId: string) => void
+  onDismiss: () => void
+}) {
+  const [phase, setPhase] = useState<'uploading' | 'processing' | 'ready' | 'failed'>('uploading')
+  const [error, setError] = useState<string | null>(null)
+  const [transitioning, setTransitioning] = useState(false)
+
+  // Keep latest callbacks in refs so the polling interval closure never goes stale.
+  const onReadyRef = useRef(onReady)
+  const onDismissRef = useRef(onDismiss)
+  useEffect(() => { onReadyRef.current = onReady }, [onReady])
+  useEffect(() => { onDismissRef.current = onDismiss }, [onDismiss])
+
+  // Poll /documents/{id}/status every 2 s until terminal state.
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const s = await getDocumentStatus(docId)
+        setPhase(s.status)
+        if (s.status === 'ready') {
+          clearInterval(id)
+          setTransitioning(true)
+        } else if (s.status === 'failed') {
+          clearInterval(id)
+          setError(s.error ?? 'Processing failed')
+        }
+      } catch { /* network hiccup — keep polling */ }
+    }, 2000)
+    return () => clearInterval(id)
+  }, [docId])
+
+  // After "ready" shows for 1 s, hand off to chat.
+  useEffect(() => {
+    if (!transitioning) return
+    const id = setTimeout(() => onReadyRef.current(kbId), 1000)
+    return () => clearTimeout(id)
+  }, [transitioning, kbId])
+
+  if (phase === 'failed') {
+    return (
+      <div style={{
+        height: '100%', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 14,
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: '50%',
+          background: `${t.danger}18`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={t.danger} strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: t.text, fontFamily: SANS, marginBottom: 4 }}>
+            Processing failed
+          </p>
+          {error && (
+            <p style={{ fontSize: 12, color: t.textSecondary, fontFamily: SANS }}>{error}</p>
+          )}
+        </div>
+        <button
+          onClick={() => onDismissRef.current()}
+          style={{
+            padding: '7px 18px', borderRadius: 8, border: `1px solid ${t.border}`,
+            background: 'transparent', color: t.textSecondary,
+            fontSize: 12, fontFamily: SANS, cursor: 'pointer',
+          }}
+        >
+          Dismiss
+        </button>
+      </div>
+    )
+  }
+
+  if (transitioning) {
+    return (
+      <div style={{
+        height: '100%', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 14,
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: '50%', background: t.accentSoft,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+        <p style={{ fontSize: 13.5, fontWeight: 600, color: t.accent, fontFamily: SANS }}>
+          Document ready!
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      height: '100%', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 16,
+    }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{
+            width: 8, height: 8, borderRadius: '50%', background: t.accent,
+            animation: `dotPulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+          }} />
+        ))}
+      </div>
+      <p style={{ fontSize: 13, color: t.textSecondary, fontFamily: SANS }}>
+        Analyzing document…
+      </p>
     </div>
   )
 }

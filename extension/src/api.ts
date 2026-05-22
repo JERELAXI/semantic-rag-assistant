@@ -143,7 +143,7 @@ export async function ingestUrl(kbId: string, title: string, url: string) {
 
 // ── Document upload (page text → .txt file) ───────────────────────────────
 
-export async function uploadPageText(kbId: string, title: string, text: string) {
+export async function uploadPageText(kbId: string, title: string, text: string): Promise<{ id: string }> {
   const blob = new Blob([text], { type: 'text/plain' })
   const file = new File([blob], `${title.slice(0, 80)}.txt`, { type: 'text/plain' })
 
@@ -157,5 +157,20 @@ export async function uploadPageText(kbId: string, title: string, text: string) 
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail ?? 'Upload failed')
   }
+  return res.json()
+}
+
+// ── Document status polling ───────────────────────────────────────────────
+
+export interface DocStatus {
+  id: string
+  status: 'uploading' | 'processing' | 'ready' | 'failed'
+  chunk_count: number
+  error: string | null
+}
+
+export async function getDocumentStatus(docId: string): Promise<DocStatus> {
+  const res = await apiFetch(`/documents/${docId}/status`)
+  if (!res.ok) throw new Error('Failed to get document status')
   return res.json()
 }
