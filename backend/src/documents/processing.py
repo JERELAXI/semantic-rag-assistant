@@ -22,7 +22,7 @@ from src.documents.models import Chunk, Document, Embedding, EMBEDDING_DIM
 logger = logging.getLogger(__name__)
 
 _llm_client = AsyncOpenAI(api_key=settings.openai_api_key)
-_CONTEXT_CONCURRENCY = 8
+_CONTEXT_CONCURRENCY = 10
 
 _SEMANTIC_SIM_THRESHOLD = 0.5
 _SEMANTIC_SENTENCE_WINDOW = 3
