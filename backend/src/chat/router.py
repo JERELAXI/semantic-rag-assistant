@@ -18,6 +18,7 @@ from src.chat.schemas import (
     SearchResult,
     SessionCreate,
     SessionResponse,
+    SessionUpdate,
 )
 from src.chat.service import (
     create_session,
@@ -25,6 +26,7 @@ from src.chat.service import (
     get_session,
     get_session_with_messages,
     list_user_sessions,
+    update_session_title,
 )
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
@@ -101,6 +103,17 @@ async def get_messages(
 ) -> list[MessageResponse]:
     session = await get_session_with_messages(db, session_id, current_user)
     return [_to_message_response(m) for m in session.messages]
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionResponse)
+async def rename(
+    session_id: uuid.UUID,
+    body: SessionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionResponse:
+    session = await update_session_title(db, session_id, current_user, body.title)
+    return SessionResponse.model_validate(session)
 
 
 @router.delete("/sessions/{session_id}", status_code=204)

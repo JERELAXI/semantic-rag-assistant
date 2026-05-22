@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquarePlus, Trash2 } from 'lucide-react';
+import { MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { FONT, MONO } from '../styles/theme';
 import { kbApi } from '../api/knowledgeBases';
@@ -31,6 +31,8 @@ export function ChatPage() {
   const [activeCitation, setActiveCitation] = useState<{ citation: CitationResponse; index: number; messageId: string } | null>(null);
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +85,29 @@ export function ChatPage() {
     } catch {
       showToast('Failed to create chat session', 'error');
     }
+  }
+
+  function startEditSession(s: SessionResponse) {
+    setEditingSessionId(s.id);
+    setEditingTitle(s.title ?? '');
+  }
+
+  async function commitEditSession(sessionId: string) {
+    const trimmed = editingTitle.trim();
+    setEditingSessionId(null);
+    if (!trimmed) return;
+    const prev = allSessions.find((s) => s.id === sessionId);
+    if (trimmed === (prev?.title ?? '')) return;
+    try {
+      const { data } = await chatApi.renameSession(sessionId, trimmed);
+      setAllSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: data.title } : s)));
+    } catch {
+      showToast('Failed to rename session', 'error');
+    }
+  }
+
+  function cancelEditSession() {
+    setEditingSessionId(null);
   }
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: string) {
@@ -248,38 +273,76 @@ export function ChatPage() {
             sessions.map((s) => {
               const isActive = s.id === activeSessionId;
               const isHovered = hoveredSessionId === s.id;
+              const isEditing = editingSessionId === s.id;
               return (
                 <div
                   key={s.id}
-                  onClick={() => setActiveSessionId(s.id)}
+                  onClick={() => !isEditing && setActiveSessionId(s.id)}
                   onMouseEnter={() => setHoveredSessionId(s.id)}
                   onMouseLeave={() => setHoveredSessionId(null)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '9px 12px', cursor: 'pointer',
+                    padding: '9px 12px', cursor: isEditing ? 'default' : 'pointer',
                     background: isActive ? t.accentSoft : isHovered ? t.surfaceAlt : 'transparent',
                     borderLeft: `2px solid ${isActive ? t.accent : 'transparent'}`,
                     transition: 'background 0.1s',
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{
-                      fontSize: 13, fontWeight: isActive ? 500 : 400,
-                      color: isActive ? t.accent : t.text, fontFamily: FONT,
-                      margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {s.title ?? 'Untitled chat'}
-                    </p>
+                    {isEditing ? (
+                      <input
+                        autoFocus
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitEditSession(s.id); }
+                          if (e.key === 'Escape') cancelEditSession();
+                        }}
+                        onBlur={() => commitEditSession(s.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          width: '100%', fontSize: 13, fontWeight: 500,
+                          color: t.accent, fontFamily: FONT,
+                          background: 'transparent', border: 'none',
+                          borderBottom: `1px solid ${t.accent}`,
+                          outline: 'none', padding: '0 0 1px', margin: 0,
+                        }}
+                      />
+                    ) : (
+                      <p
+                        onDoubleClick={() => startEditSession(s)}
+                        style={{
+                          fontSize: 13, fontWeight: isActive ? 500 : 400,
+                          color: isActive ? t.accent : t.text, fontFamily: FONT,
+                          margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {s.title ?? 'Untitled chat'}
+                      </p>
+                    )}
                     <p style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, margin: '2px 0 0' }}>
                       {fmtDate(s.updated_at)}
                     </p>
                   </div>
+                  {isActive && !isEditing && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startEditSession(s); }}
+                      style={{
+                        background: 'none', border: 'none', padding: 3,
+                        borderRadius: 5, cursor: 'pointer', color: t.accent,
+                        opacity: isHovered ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
+                        display: 'flex', alignItems: 'center',
+                      }}
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => handleDeleteSession(e, s.id)}
                     style={{
                       background: 'none', border: 'none', padding: 3,
                       borderRadius: 5, cursor: 'pointer', color: t.textTri,
-                      opacity: isHovered ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
+                      opacity: isHovered && !isEditing ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
                       display: 'flex', alignItems: 'center',
                     }}
                   >

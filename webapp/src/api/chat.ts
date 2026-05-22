@@ -32,6 +32,9 @@ export const chatApi = {
   getMessages: (sessionId: string) =>
     api.get<MessageResponse[]>(`/chat/sessions/${sessionId}/messages`),
 
+  renameSession: (sessionId: string, title: string) =>
+    api.patch<SessionResponse>(`/chat/sessions/${sessionId}`, { title }),
+
   deleteSession: (sessionId: string) =>
     api.delete(`/chat/sessions/${sessionId}`),
 
