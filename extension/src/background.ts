@@ -1,34 +1,37 @@
-// Service worker — opens SidePanel on action click and brokers PAGE_TEXT from content scripts
+// Service worker — opens SidePanel on action click, auto-closes on domain change
 
-// Disable the panel globally so it only appears for tabs we explicitly enable it on.
+// Disable panel globally; enable per-tab only when the user explicitly opens it.
 chrome.sidePanel.setOptions({ enabled: false })
 
-chrome.action.onClicked.addListener((tab) => {
-  if (tab.id !== undefined) {
-    chrome.sidePanel.setOptions({ tabId: tab.id, enabled: true })
-    chrome.sidePanel.open({ tabId: tab.id })
+// Track the origin each tab's panel was opened on (in-memory; resets on service-worker restart).
+const panelOrigins: Record<number, string> = {}
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab.id === undefined) return
+  // setOptions must complete before open() is called, so we await it.
+  await chrome.sidePanel.setOptions({ tabId: tab.id, enabled: true })
+  chrome.sidePanel.open({ tabId: tab.id })
+  if (tab.url) {
+    try { panelOrigins[tab.id] = new URL(tab.url).origin } catch { /* ignore non-parseable URLs */ }
   }
 })
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'PAGE_TEXT') {
-    // Store in chrome.storage.local so it survives service-worker restarts
-    chrome.storage.local.set({
-      pendingPageText: {
-        text: msg.text as string,
-        title: msg.title as string,
-        url: msg.url as string,
-      },
-    })
-    // Open the SidePanel only for the sender's tab
-    const tabId = sender.tab?.id
-    if (tabId !== undefined) {
-      chrome.sidePanel.setOptions({ tabId, enabled: true })
-      chrome.sidePanel.open({ tabId })
-    }
-    sendResponse({ ok: true })
-    return true
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return
+  if (!(tabId in panelOrigins)) return
+  if (!tab.url) return
+
+  let newOrigin: string
+  try {
+    newOrigin = new URL(tab.url).origin
+  } catch {
+    return
   }
 
-  return false
+  if (newOrigin !== panelOrigins[tabId]) {
+    delete panelOrigins[tabId]
+    // Disable closes the panel; re-enable restores the "can be opened" state for this tab.
+    await chrome.sidePanel.setOptions({ tabId, enabled: false })
+    await chrome.sidePanel.setOptions({ tabId, enabled: true })
+  }
 })
