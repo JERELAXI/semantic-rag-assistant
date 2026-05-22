@@ -41,6 +41,7 @@ async def _get_access_level(
         select(KBShare).where(
             KBShare.knowledge_base_id == kb_id,
             KBShare.shared_with_user_id == user.id,
+            KBShare.status == "accepted",
         )
     )
     share = share_result.scalar_one_or_none()
@@ -172,6 +173,7 @@ async def list_knowledge_bases(
         .where(
             KBShare.shared_with_user_id == user.id,
             KnowledgeBase.owner_type == "user",
+            KBShare.status == "accepted",
         )
         .order_by(KnowledgeBase.created_at.desc())
     )
@@ -267,3 +269,55 @@ async def get_kb_shares(
         .order_by(KBShare.created_at.asc())
     )
     return list(result.scalars().all())
+
+
+async def get_pending_invitations(
+    db: AsyncSession, user: User
+) -> list[tuple]:
+    """Return (share, kb_name, owner_display_name) rows for pending invitations."""
+    result = await db.execute(
+        select(KBShare, KnowledgeBase.name, User.display_name)
+        .join(KnowledgeBase, KnowledgeBase.id == KBShare.knowledge_base_id)
+        .join(User, User.id == KnowledgeBase.owner_id)
+        .where(
+            KBShare.shared_with_user_id == user.id,
+            KBShare.status == "pending",
+            KnowledgeBase.owner_type == "user",
+        )
+        .order_by(KBShare.created_at.desc())
+    )
+    return list(result.all())
+
+
+async def accept_invitation(
+    db: AsyncSession, share_id: uuid.UUID, user: User
+) -> None:
+    result = await db.execute(
+        select(KBShare).where(
+            KBShare.id == share_id,
+            KBShare.shared_with_user_id == user.id,
+            KBShare.status == "pending",
+        )
+    )
+    share = result.scalar_one_or_none()
+    if share is None:
+        raise NotFoundError("Invitation not found")
+    share.status = "accepted"
+    await db.commit()
+
+
+async def decline_invitation(
+    db: AsyncSession, share_id: uuid.UUID, user: User
+) -> None:
+    result = await db.execute(
+        select(KBShare).where(
+            KBShare.id == share_id,
+            KBShare.shared_with_user_id == user.id,
+            KBShare.status == "pending",
+        )
+    )
+    share = result.scalar_one_or_none()
+    if share is None:
+        raise NotFoundError("Invitation not found")
+    await db.delete(share)
+    await db.commit()

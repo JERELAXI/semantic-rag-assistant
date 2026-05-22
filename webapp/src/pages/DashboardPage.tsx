@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Database, Trash2 } from 'lucide-react';
+import { Plus, Database, Trash2, Bell, Check, X } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { FONT } from '../styles/theme';
-import { kbApi, KBResponse } from '../api/knowledgeBases';
+import { kbApi, KBResponse, KBInvitationResponse } from '../api/knowledgeBases';
 import { documentsApi } from '../api/documents';
 import { Modal } from '../components/UI/Modal';
 import { ConfirmDialog } from '../components/UI/ConfirmDialog';
@@ -32,7 +32,51 @@ export function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState<KBCard | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  useEffect(() => { loadKBs(); }, []);
+  const [invitations, setInvitations] = useState<KBInvitationResponse[]>([]);
+  const [invitationsOpen, setInvitationsOpen] = useState(false);
+  const [actingOn, setActingOn] = useState<string | null>(null);
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function loadAll() {
+    await Promise.all([loadKBs(), loadInvitations()]);
+  }
+
+  async function loadInvitations() {
+    try {
+      const { data } = await kbApi.getPendingInvitations();
+      setInvitations(data);
+    } catch {
+      // non-fatal — invitations banner is optional
+    }
+  }
+
+  async function handleAccept(shareId: string) {
+    setActingOn(shareId);
+    try {
+      await kbApi.acceptInvitation(shareId);
+      setInvitations((prev) => prev.filter((i) => i.share_id !== shareId));
+      await loadKBs();
+      showToast('Invitation accepted');
+    } catch {
+      showToast('Failed to accept invitation', 'error');
+    } finally {
+      setActingOn(null);
+    }
+  }
+
+  async function handleDecline(shareId: string) {
+    setActingOn(shareId);
+    try {
+      await kbApi.declineInvitation(shareId);
+      setInvitations((prev) => prev.filter((i) => i.share_id !== shareId));
+      showToast('Invitation declined');
+    } catch {
+      showToast('Failed to decline invitation', 'error');
+    } finally {
+      setActingOn(null);
+    }
+  }
 
   async function loadKBs() {
     setLoading(true);
@@ -119,6 +163,31 @@ export function DashboardPage() {
           New KB
         </button>
       </div>
+
+      {invitations.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 16px', borderRadius: 10, marginBottom: 20,
+          background: t.accentSoft, border: `1px solid ${t.accentBorder}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Bell size={15} color={t.accent} />
+            <span style={{ fontSize: 13, fontFamily: FONT, color: t.text }}>
+              You have {invitations.length} pending invitation{invitations.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <button
+            onClick={() => setInvitationsOpen(true)}
+            style={{
+              padding: '6px 14px', borderRadius: 6, border: 'none',
+              background: t.accent, color: '#fff',
+              fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer',
+            }}
+          >
+            View
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
@@ -311,6 +380,67 @@ export function DashboardPage() {
               {creating ? 'Creating…' : 'Create'}
             </button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={invitationsOpen} onClose={() => setInvitationsOpen(false)} title="Pending Invitations" maxWidth={480}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {invitations.length === 0 ? (
+            <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, margin: 0, textAlign: 'center', padding: '20px 0' }}>
+              No pending invitations
+            </p>
+          ) : (
+            invitations.map((inv) => (
+              <div
+                key={inv.share_id}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 14px', borderRadius: 8,
+                  background: t.surfaceAlt, border: `1px solid ${t.border}`,
+                  gap: 12,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: FONT, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {inv.kb_name}
+                  </p>
+                  <p style={{ fontSize: 11, color: t.textSec, fontFamily: FONT, margin: 0 }}>
+                    Shared by {inv.owner_name} &middot; {inv.permission}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleDecline(inv.share_id)}
+                    disabled={actingOn === inv.share_id}
+                    title="Decline"
+                    style={{
+                      width: 30, height: 30, borderRadius: 6, border: `1px solid ${t.border}`,
+                      background: 'transparent', color: t.textSec,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: actingOn === inv.share_id ? 'not-allowed' : 'pointer',
+                      opacity: actingOn === inv.share_id ? 0.5 : 1,
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                  <button
+                    onClick={() => handleAccept(inv.share_id)}
+                    disabled={actingOn === inv.share_id}
+                    title="Accept"
+                    style={{
+                      width: 30, height: 30, borderRadius: 6, border: 'none',
+                      background: t.accent, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: actingOn === inv.share_id ? 'not-allowed' : 'pointer',
+                      opacity: actingOn === inv.share_id ? 0.5 : 1,
+                    }}
+                  >
+                    <Check size={13} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </Modal>
 

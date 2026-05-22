@@ -18,6 +18,16 @@ export interface KBShareResponse {
   shared_with_email: string;
   shared_with_display_name: string;
   permission: 'viewer' | 'editor';
+  status: 'pending' | 'accepted';
+  created_at: string;
+}
+
+export interface KBInvitationResponse {
+  share_id: string;
+  kb_id: string;
+  kb_name: string;
+  owner_name: string;
+  permission: 'viewer' | 'editor';
   created_at: string;
 }
 
@@ -38,4 +48,11 @@ export const kbApi = {
     api.get<KBShareResponse[]>(`/knowledge-bases/${kbId}/shares`),
   unshare: (kbId: string, userId: string) =>
     api.delete(`/knowledge-bases/${kbId}/shares/${userId}`),
+
+  getPendingInvitations: () =>
+    api.get<KBInvitationResponse[]>('/knowledge-bases/invitations'),
+  acceptInvitation: (shareId: string) =>
+    api.post(`/knowledge-bases/invitations/${shareId}/accept`),
+  declineInvitation: (shareId: string) =>
+    api.post(`/knowledge-bases/invitations/${shareId}/decline`),
 };

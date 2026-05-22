@@ -48,4 +48,14 @@ class KBShareResponse(BaseModel):
     shared_with_email: str
     shared_with_display_name: str
     permission: Literal["viewer", "editor"]
+    status: Literal["pending", "accepted"]
+    created_at: datetime
+
+
+class KBInvitationResponse(BaseModel):
+    share_id: uuid.UUID
+    kb_id: uuid.UUID
+    kb_name: str
+    owner_name: str
+    permission: Literal["viewer", "editor"]
     created_at: datetime

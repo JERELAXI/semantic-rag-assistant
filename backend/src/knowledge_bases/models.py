@@ -64,6 +64,7 @@ class KBShare(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     permission: Mapped[str] = mapped_column(String(10), nullable=False)  # "viewer" | "editor"
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")  # "pending" | "accepted"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     __table_args__ = (UniqueConstraint("knowledge_base_id", "shared_with_user_id", name="uq_kb_shares_kb_user"),)

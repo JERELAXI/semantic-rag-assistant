@@ -10,13 +10,22 @@ from src.auth.models import User
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
 from src.knowledge_bases.models import KBShare, KnowledgeBase
-from src.knowledge_bases.schemas import KBCreate, KBResponse, KBShareCreate, KBShareResponse
+from src.knowledge_bases.schemas import (
+    KBCreate,
+    KBInvitationResponse,
+    KBResponse,
+    KBShareCreate,
+    KBShareResponse,
+)
 from src.knowledge_bases.service import (
+    accept_invitation,
     check_kb_owner,
     create_knowledge_base,
+    decline_invitation,
     delete_knowledge_base,
     get_kb_shares,
     get_kb_with_permission,
+    get_pending_invitations,
     list_knowledge_bases,
     share_kb,
     unshare_kb,
@@ -50,8 +59,48 @@ def _build_share_response(share: KBShare) -> KBShareResponse:
         shared_with_email=share.shared_with.email,
         shared_with_display_name=share.shared_with.display_name,
         permission=share.permission,  # type: ignore[arg-type]
+        status=share.status,  # type: ignore[arg-type]
         created_at=share.created_at,
     )
+
+
+# ── Invitations (registered before /{kb_id} to avoid path-param capture) ────
+
+@router.get("/invitations", response_model=list[KBInvitationResponse])
+async def list_invitations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[KBInvitationResponse]:
+    rows = await get_pending_invitations(db, current_user)
+    return [
+        KBInvitationResponse(
+            share_id=share.id,
+            kb_id=share.knowledge_base_id,
+            kb_name=kb_name,
+            owner_name=owner_name,
+            permission=share.permission,  # type: ignore[arg-type]
+            created_at=share.created_at,
+        )
+        for share, kb_name, owner_name in rows
+    ]
+
+
+@router.post("/invitations/{share_id}/accept", status_code=204)
+async def accept(
+    share_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    await accept_invitation(db, share_id, current_user)
+
+
+@router.post("/invitations/{share_id}/decline", status_code=204)
+async def decline(
+    share_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    await decline_invitation(db, share_id, current_user)
 
 
 # ── KB CRUD ──────────────────────────────────────────────────────────────────
