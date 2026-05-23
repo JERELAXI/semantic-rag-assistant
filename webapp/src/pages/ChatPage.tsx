@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { generateId } from '../utils/id';
 import { MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useT, useLang } from '../contexts/LangContext';
@@ -132,7 +133,7 @@ export function ChatPage() {
     setStreamingContent('');
 
     const userMsg: MessageResponse = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       role: 'user',
       content,
       created_at: new Date().toISOString(),
@@ -157,7 +158,7 @@ export function ChatPage() {
           setMessages((prev) => [
             ...prev,
             {
-              id: crypto.randomUUID(),
+              id: generateId(),
               role: 'assistant',
               content: finalContent,
               created_at: new Date().toISOString(),
