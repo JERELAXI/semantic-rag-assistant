@@ -150,6 +150,30 @@ const uk: Record<string, string> = {
   'confirm.delete': 'Видалити',
   'confirm.deleting': 'Видалення…',
 
+  // ── Landing page ─────────────────────────────────────────────────────────────
+  'landing.tagline': 'Семантичний пошук у ваших документах',
+  'landing.description':
+    'Завантажуйте документи, задавайте запитання природною мовою та отримуйте точні відповіді з посиланнями на джерела.',
+  'landing.cta.start': 'Почати',
+  'landing.cta.login': 'Увійти',
+  'landing.features.heading': 'Можливості',
+  'landing.features.docs.title': 'Документи',
+  'landing.features.docs.desc': 'Завантажуйте PDF, DOCX, TXT та MD — автоматичне розбиття на фрагменти та вкладення.',
+  'landing.features.search.title': 'Семантичний пошук',
+  'landing.features.search.desc': 'Гібридний пошук: векторний + повнотекстовий з RRF злиттям для максимальної точності.',
+  'landing.features.chat.title': 'RAG-чат',
+  'landing.features.chat.desc': 'Спілкуйтеся зі своїми документами — відповіді стримуються в реальному часі з цитатами.',
+  'landing.features.extension.title': 'Chrome-розширення',
+  'landing.features.extension.desc': 'Бічна панель для доступу до ваших баз знань прямо в браузері.',
+  'landing.how.heading': 'Як це працює',
+  'landing.how.step1.label': 'Завантажте',
+  'landing.how.step1.desc': 'Перетягніть документи у базу знань — обробка відбувається автоматично.',
+  'landing.how.step2.label': 'Запитайте',
+  'landing.how.step2.desc': 'Задайте запитання природною мовою у вбудованому чаті.',
+  'landing.how.step3.label': 'Отримайте відповідь',
+  'landing.how.step3.desc': 'Асистент відповідає з посиланнями на конкретні фрагменти документів.',
+  'landing.footer': 'Дипломний проєкт · 2026',
+
   // ── Toast messages ───────────────────────────────────────────────────────────
   'toast.invitationAccepted': 'Запрошення прийнято',
   'toast.invitationAcceptFailed': 'Не вдалося прийняти запрошення',
@@ -326,6 +350,30 @@ const en: Record<string, string> = {
   'confirm.cancel': 'Cancel',
   'confirm.delete': 'Delete',
   'confirm.deleting': 'Deleting…',
+
+  // ── Landing page ─────────────────────────────────────────────────────────────
+  'landing.tagline': 'Semantic search over your documents',
+  'landing.description':
+    'Upload documents, ask questions in natural language, and get precise answers with source citations.',
+  'landing.cta.start': 'Get started',
+  'landing.cta.login': 'Sign in',
+  'landing.features.heading': 'Features',
+  'landing.features.docs.title': 'Documents',
+  'landing.features.docs.desc': 'Upload PDF, DOCX, TXT and MD — automatic chunking and embedding.',
+  'landing.features.search.title': 'Semantic Search',
+  'landing.features.search.desc': 'Hybrid retrieval: vector + full-text with RRF fusion for maximum accuracy.',
+  'landing.features.chat.title': 'RAG Chat',
+  'landing.features.chat.desc': 'Chat with your documents — answers stream in real time with inline citations.',
+  'landing.features.extension.title': 'Chrome Extension',
+  'landing.features.extension.desc': 'Side panel for accessing your knowledge bases directly in the browser.',
+  'landing.how.heading': 'How it works',
+  'landing.how.step1.label': 'Upload',
+  'landing.how.step1.desc': 'Drop documents into a knowledge base — processing happens automatically.',
+  'landing.how.step2.label': 'Ask',
+  'landing.how.step2.desc': 'Ask a question in natural language using the built-in chat.',
+  'landing.how.step3.label': 'Get answers',
+  'landing.how.step3.desc': 'The assistant responds with references to specific document chunks.',
+  'landing.footer': 'Diploma project · 2026',
 
   // ── Toast messages ───────────────────────────────────────────────────────────
   'toast.invitationAccepted': 'Invitation accepted',

@@ -7,7 +7,7 @@ import { useT, useLang } from '../../contexts/LangContext';
 import { FONT } from '../../styles/theme';
 
 const NAV_ITEMS = [
-  { path: '/', icon: LayoutDashboard, key: 'nav.knowledgeBases' },
+  { path: '/dashboard', icon: LayoutDashboard, key: 'nav.knowledgeBases' },
   { path: '/chat', icon: MessageSquare, key: 'nav.chat' },
   { path: '/settings', icon: Settings, key: 'nav.settings' },
 ] as const;
@@ -22,7 +22,7 @@ export function Sidebar() {
   const [hoveredPath, setHoveredPath] = useState<string | null>(null);
 
   const isActive = (path: string) =>
-    path === '/' ? pathname === '/' : pathname.startsWith(path);
+    pathname === path || pathname.startsWith(path + '/');
 
   return (
     <div

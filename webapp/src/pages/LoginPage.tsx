@@ -22,13 +22,13 @@ function inputStyle(t: Tokens): React.CSSProperties {
   };
 }
 
-export function LoginPage() {
+export function LoginPage({ initialMode }: { initialMode?: Mode }) {
   const t = useTheme();
   const tx = useT();
   const { user, loading, login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<Mode>(initialMode ?? 'login');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,7 +36,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && user) navigate('/', { replace: true });
+    if (!loading && user) navigate('/dashboard', { replace: true });
   }, [user, loading, navigate]);
 
   if (loading) return null;
@@ -51,7 +51,7 @@ export function LoginPage() {
       } else {
         await register(email, password, displayName);
       }
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : tx('login.error.generic'));

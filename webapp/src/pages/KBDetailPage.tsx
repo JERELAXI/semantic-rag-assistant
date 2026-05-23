@@ -142,7 +142,7 @@ export function KBDetailPage() {
     try {
       await kbApi.delete(id);
       showToast(tx('toast.kbDeleted', { name: kb?.name ?? '' }));
-      navigate('/');
+      navigate('/dashboard');
     } catch {
       showToast(tx('toast.kbDeleteFailed'), 'error');
     }
@@ -201,7 +201,7 @@ export function KBDetailPage() {
     <div style={{ padding: '32px 40px', maxWidth: 860 }}>
       {/* Back */}
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/dashboard')}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           background: 'none', border: 'none', padding: 0,
