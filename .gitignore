@@ -13,7 +13,7 @@ env/
 
 # Environment variables
 .env
-.env
+.env.*
 
 # IDE
 .idea/
@@ -29,3 +29,5 @@ Thumbs.db
 CLAUDE.md
 docs
 backend/uploads
+node_modules/
+dist/

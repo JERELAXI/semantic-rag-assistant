@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { darkTokens, lightTokens, type Tokens, SANS, MONO } from './theme'
 import {
   login, storeTokens, clearTokens, isLoggedIn,
-  listKBs, createKB, createSession, uploadPageText, ingestUrl,
+  listKBs, createKB, createSession, uploadPageText, getDocumentStatus,
+  getBaseUrl, setBaseUrl,
   type KBItem,
 } from './api'
 import { streamMessage, type Citation } from './stream'
@@ -31,11 +32,11 @@ interface Message {
   citations: Citation[]
 }
 
-interface IngestData {
-  text?: string
-  fileUrl?: string
+interface PageInfo {
   title: string
   url: string
+  textLength: number
+  text: string
 }
 
 // ── Root app ──────────────────────────────────────────────────────────────
@@ -43,29 +44,9 @@ interface IngestData {
 export default function App() {
   const t = useTheme()
   const [authState, setAuthState] = useState<'loading' | 'login' | 'app'>('loading')
-  const [ingestData, setIngestData] = useState<IngestData | null>(null)
 
-  // Check auth on mount + listen for page-text from content script
   useEffect(() => {
     isLoggedIn().then((ok) => setAuthState(ok ? 'app' : 'login'))
-
-    // Pick up any page text that arrived while panel was closed
-    chrome.storage.local.get(['pendingPageText'], (res) => {
-      if (res.pendingPageText) {
-        setIngestData(res.pendingPageText as IngestData)
-        chrome.storage.local.remove(['pendingPageText'])
-      }
-    })
-
-    // Real-time: content script triggers while panel is open
-    const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.pendingPageText?.newValue) {
-        setIngestData(changes.pendingPageText.newValue as IngestData)
-        chrome.storage.local.remove(['pendingPageText'])
-      }
-    }
-    chrome.storage.onChanged.addListener(listener)
-    return () => chrome.storage.onChanged.removeListener(listener)
   }, [])
 
   const handleLogin = async (email: string, password: string) => {
@@ -98,8 +79,6 @@ export default function App() {
   return (
     <AppShell
       t={t}
-      ingestData={ingestData}
-      onIngestClear={() => setIngestData(null)}
       onLogout={handleLogout}
       onSessionExpired={handleSessionExpired}
     />
@@ -223,15 +202,14 @@ function LoginView({ t, onLogin }: { t: Tokens; onLogin: (email: string, passwor
 // ── Authenticated shell ───────────────────────────────────────────────────
 
 function AppShell({
-  t, ingestData, onIngestClear, onLogout, onSessionExpired,
+  t, onLogout, onSessionExpired,
 }: {
   t: Tokens
-  ingestData: IngestData | null
-  onIngestClear: () => void
   onLogout: () => void
   onSessionExpired: () => void
 }) {
   const [view, setView] = useState<'chat' | 'sources'>('chat')
+  const [showSettings, setShowSettings] = useState(false)
   const [kbs, setKbs] = useState<KBItem[]>([])
   const [selectedKbId, setSelectedKbId] = useState('')
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -239,12 +217,31 @@ function AppShell({
   const [streaming, setStreaming] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const [streamCitations, setStreamCitations] = useState<Citation[]>([])
-  const [activeCit, setActiveCit] = useState<number | null>(null)
+  const [activeCit, setActiveCit] = useState<{ msgId: string; n: number } | null>(null)
+  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [ingestKbId, setIngestKbId] = useState('__auto')
+  const [ingesting, setIngesting] = useState(false)
+  const [processingDoc, setProcessingDoc] = useState<{ docId: string; kbId: string } | null>(null)
 
   useEffect(() => {
     listKBs()
       .then(setKbs)
       .catch((e) => { if (e?.message === 'Session expired') onSessionExpired() })
+  }, [])
+
+  useEffect(() => {
+    chrome.storage.local.get('page_info', (r) => {
+      if (r.page_info) setPageInfo(r.page_info as PageInfo)
+    })
+    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if ('page_info' in changes) {
+        setPageInfo(changes.page_info.newValue ?? null)
+        setBannerDismissed(false)
+      }
+    }
+    chrome.storage.onChanged.addListener(listener)
+    return () => chrome.storage.onChanged.removeListener(listener)
   }, [])
 
   const handleKBSelect = async (kbId: string) => {
@@ -259,6 +256,47 @@ function AppShell({
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'Session expired') onSessionExpired()
     }
+  }
+
+  const handleIngest = async () => {
+    if (!pageInfo || ingesting) return
+    setIngesting(true)
+    try {
+      let kbId = ingestKbId
+
+      if (kbId === '__auto') {
+        // Always create a new unique KB — each page gets its own isolated KB.
+        // Naming: "Browser Pages", then "Browser Pages 1", "Browser Pages 2", …
+        const all = await listKBs()
+        const base = 'Browser Pages'
+        const matches = all.filter((kb) => kb.name === base || /^Browser Pages \d+$/.test(kb.name))
+        let newName: string
+        if (matches.length === 0) {
+          newName = base
+        } else {
+          const nums = matches.map((kb) =>
+            kb.name === base ? 0 : parseInt(kb.name.match(/\d+$/)![0]),
+          )
+          newName = `${base} ${Math.max(...nums) + 1}`
+        }
+        const created = await createKB(newName)
+        kbId = created.id
+        setKbs((prev) => [...prev, created])
+      }
+
+      const doc = await uploadPageText(kbId, pageInfo.title, pageInfo.text)
+      setProcessingDoc({ docId: doc.id, kbId })
+      setBannerDismissed(true)
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'Session expired') onSessionExpired()
+    } finally {
+      setIngesting(false)
+    }
+  }
+
+  const handleDismiss = () => {
+    setBannerDismissed(true)
+    chrome.storage.local.remove('page_info')
   }
 
   const handleNewChat = async () => {
@@ -295,12 +333,13 @@ function AppShell({
           accCitations = event.citations
           setStreamCitations(accCitations)
         } else if ('done' in event) {
+          const finalContent = event.final_content ?? accContent
           setStreamContent('')
           setStreamCitations([])
           setMessages((prev) => [...prev, {
             id: crypto.randomUUID(),
             role: 'assistant',
-            content: accContent,
+            content: finalContent,
             citations: accCitations,
           }])
         }
@@ -321,7 +360,14 @@ function AppShell({
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: t.bg, position: 'relative' }}>
       <style>{`::-webkit-scrollbar-thumb { background: ${t.scrollThumb}; }`}</style>
 
-      <PanelHeader t={t} view={view} onViewChange={setView} onLogout={onLogout} />
+      <PanelHeader
+        t={t}
+        view={view}
+        onViewChange={setView}
+        onLogout={onLogout}
+        showSettings={showSettings}
+        onSettingsClick={() => setShowSettings(!showSettings)}
+      />
 
       <KBSelector
         t={t}
@@ -332,40 +378,51 @@ function AppShell({
         sessionId={sessionId}
       />
 
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {view === 'chat' ? (
-          <ChatView
-            t={t}
-            messages={messages}
-            streaming={streaming}
-            streamContent={streamContent}
-            streamCitations={streamCitations}
-            sessionId={sessionId}
-            activeCit={activeCit}
-            onCitClick={(n) => setActiveCit(activeCit === n ? null : n)}
-            onSend={handleSend}
-          />
-        ) : (
-          <SourcesView t={t} citations={lastCitations} />
-        )}
-      </div>
-
-      {/* Ingest confirmation overlay */}
-      {ingestData && (
-        <IngestConfirm
+      {pageInfo && !bannerDismissed && (
+        <IngestBanner
           t={t}
-          data={ingestData}
-          onClose={onIngestClear}
-          onSuccess={async (kbId) => {
-            onIngestClear()
-            // Refresh KB list then switch to Browser Pages KB
-            const updated = await listKBs().catch(() => kbs)
-            setKbs(updated)
-            await handleKBSelect(kbId)
-          }}
-          onSessionExpired={onSessionExpired}
+          pageInfo={pageInfo}
+          kbs={kbs}
+          ingestKbId={ingestKbId}
+          ingesting={ingesting}
+          onKbChange={setIngestKbId}
+          onIngest={handleIngest}
+          onDismiss={handleDismiss}
         />
       )}
+
+      {showSettings ? (
+        <SettingsView t={t} onClose={() => setShowSettings(false)} />
+      ) : (
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {processingDoc ? (
+            <ProcessingView
+              t={t}
+              docId={processingDoc.docId}
+              kbId={processingDoc.kbId}
+              onReady={(id) => { setProcessingDoc(null); handleKBSelect(id) }}
+              onDismiss={() => setProcessingDoc(null)}
+            />
+          ) : view === 'chat' ? (
+            <ChatView
+              t={t}
+              messages={messages}
+              streaming={streaming}
+              streamContent={streamContent}
+              streamCitations={streamCitations}
+              sessionId={sessionId}
+              activeCit={activeCit}
+              onCitClick={(n, msgId) => setActiveCit(
+                activeCit?.msgId === msgId && activeCit?.n === n ? null : { msgId, n },
+              )}
+              onSend={handleSend}
+            />
+          ) : (
+            <SourcesView t={t} citations={lastCitations} />
+          )}
+        </div>
+      )}
+
     </div>
   )
 }
@@ -373,8 +430,15 @@ function AppShell({
 // ── Header ────────────────────────────────────────────────────────────────
 
 function PanelHeader({
-  t, view, onViewChange, onLogout,
-}: { t: Tokens; view: 'chat' | 'sources'; onViewChange: (v: 'chat' | 'sources') => void; onLogout: () => void }) {
+  t, view, onViewChange, onLogout, showSettings, onSettingsClick,
+}: {
+  t: Tokens
+  view: 'chat' | 'sources'
+  onViewChange: (v: 'chat' | 'sources') => void
+  onLogout: () => void
+  showSettings: boolean
+  onSettingsClick: () => void
+}) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', padding: '11px 14px',
@@ -415,6 +479,25 @@ function PanelHeader({
           </button>
         ))}
       </div>
+
+      {/* Settings button */}
+      <button
+        onClick={onSettingsClick}
+        title="Settings"
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: showSettings ? t.accent : t.textTertiary,
+          display: 'flex', padding: 4, borderRadius: 6,
+          transition: 'color 0.12s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = t.accent)}
+        onMouseLeave={(e) => (e.currentTarget.style.color = showSettings ? t.accent : t.textTertiary)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
 
       {/* Logout button */}
       <button
@@ -499,6 +582,209 @@ function KBSelector({
   )
 }
 
+// ── Ingest banner ─────────────────────────────────────────────────────────
+
+function IngestBanner({
+  t, pageInfo, kbs, ingestKbId, ingesting, onKbChange, onIngest, onDismiss,
+}: {
+  t: Tokens
+  pageInfo: PageInfo
+  kbs: KBItem[]
+  ingestKbId: string
+  ingesting: boolean
+  onKbChange: (id: string) => void
+  onIngest: () => void
+  onDismiss: () => void
+}) {
+  const title = pageInfo.title.length > 38 ? pageInfo.title.slice(0, 38) + '…' : pageInfo.title
+  const chars = pageInfo.textLength.toLocaleString()
+
+  return (
+    <div style={{
+      padding: '7px 14px', borderBottom: `1px solid ${t.accentBorder}`,
+      background: t.accentSoft,
+      display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+    }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+
+      <span style={{ fontSize: 11.5, color: t.text, fontFamily: SANS, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', minWidth: 0 }}>
+        <strong style={{ fontWeight: 600 }}>{title}</strong>
+        <span style={{ color: t.textTertiary }}> — {chars} chars</span>
+      </span>
+
+      <select
+        value={ingestKbId}
+        onChange={(e) => onKbChange(e.target.value)}
+        disabled={ingesting}
+        style={{
+          fontSize: 11, fontFamily: SANS, padding: '3px 6px', borderRadius: 6,
+          border: `1px solid ${t.accentBorder}`, background: t.surface,
+          color: t.text, cursor: 'pointer', flexShrink: 0, maxWidth: 115,
+        }}
+      >
+        <option value="__auto">Auto (Browser Pages)</option>
+        {kbs.map((kb) => (
+          <option key={kb.id} value={kb.id}>{kb.name}</option>
+        ))}
+      </select>
+
+      <button
+        onClick={onIngest}
+        disabled={ingesting}
+        style={{
+          padding: '4px 10px', borderRadius: 6, border: 'none',
+          background: t.accent, color: '#fff',
+          fontSize: 11, fontWeight: 600, fontFamily: SANS,
+          cursor: ingesting ? 'not-allowed' : 'pointer',
+          opacity: ingesting ? 0.65 : 1, flexShrink: 0,
+        }}
+      >
+        {ingesting ? '…' : 'Add to KB'}
+      </button>
+
+      <button
+        onClick={onDismiss}
+        title="Dismiss"
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: t.textTertiary, fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0,
+        }}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+// ── Processing view ───────────────────────────────────────────────────────
+
+function ProcessingView({
+  t, docId, kbId, onReady, onDismiss,
+}: {
+  t: Tokens
+  docId: string
+  kbId: string
+  onReady: (kbId: string) => void
+  onDismiss: () => void
+}) {
+  const [phase, setPhase] = useState<'uploading' | 'processing' | 'ready' | 'failed'>('uploading')
+  const [error, setError] = useState<string | null>(null)
+  const [transitioning, setTransitioning] = useState(false)
+
+  // Keep latest callbacks in refs so the polling interval closure never goes stale.
+  const onReadyRef = useRef(onReady)
+  const onDismissRef = useRef(onDismiss)
+  useEffect(() => { onReadyRef.current = onReady }, [onReady])
+  useEffect(() => { onDismissRef.current = onDismiss }, [onDismiss])
+
+  // Poll /documents/{id}/status every 2 s until terminal state.
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const s = await getDocumentStatus(docId)
+        setPhase(s.status)
+        if (s.status === 'ready') {
+          clearInterval(id)
+          setTransitioning(true)
+        } else if (s.status === 'failed') {
+          clearInterval(id)
+          setError(s.error ?? 'Processing failed')
+        }
+      } catch { /* network hiccup — keep polling */ }
+    }, 2000)
+    return () => clearInterval(id)
+  }, [docId])
+
+  // After "ready" shows for 1 s, hand off to chat.
+  useEffect(() => {
+    if (!transitioning) return
+    const id = setTimeout(() => onReadyRef.current(kbId), 1000)
+    return () => clearTimeout(id)
+  }, [transitioning, kbId])
+
+  if (phase === 'failed') {
+    return (
+      <div style={{
+        height: '100%', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 14,
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: '50%',
+          background: `${t.danger}18`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={t.danger} strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: t.text, fontFamily: SANS, marginBottom: 4 }}>
+            Processing failed
+          </p>
+          {error && (
+            <p style={{ fontSize: 12, color: t.textSecondary, fontFamily: SANS }}>{error}</p>
+          )}
+        </div>
+        <button
+          onClick={() => onDismissRef.current()}
+          style={{
+            padding: '7px 18px', borderRadius: 8, border: `1px solid ${t.border}`,
+            background: 'transparent', color: t.textSecondary,
+            fontSize: 12, fontFamily: SANS, cursor: 'pointer',
+          }}
+        >
+          Dismiss
+        </button>
+      </div>
+    )
+  }
+
+  if (transitioning) {
+    return (
+      <div style={{
+        height: '100%', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 14,
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: '50%', background: t.accentSoft,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+        <p style={{ fontSize: 13.5, fontWeight: 600, color: t.accent, fontFamily: SANS }}>
+          Document ready!
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      height: '100%', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 16,
+    }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{
+            width: 8, height: 8, borderRadius: '50%', background: t.accent,
+            animation: `dotPulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+          }} />
+        ))}
+      </div>
+      <p style={{ fontSize: 13, color: t.textSecondary, fontFamily: SANS }}>
+        Analyzing document…
+      </p>
+    </div>
+  )
+}
+
 // ── Chat view ─────────────────────────────────────────────────────────────
 
 function ChatView({
@@ -511,8 +797,8 @@ function ChatView({
   streamContent: string
   streamCitations: Citation[]
   sessionId: string | null
-  activeCit: number | null
-  onCitClick: (n: number) => void
+  activeCit: { msgId: string; n: number } | null
+  onCitClick: (n: number, msgId: string) => void
   onSend: (content: string) => void
 }) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -562,7 +848,7 @@ function ChatView({
             msg={msg}
             t={t}
             activeCit={activeCit}
-            onCitClick={onCitClick}
+            onCitClick={(n) => onCitClick(n, msg.id)}
           />
         ))}
 
@@ -571,16 +857,20 @@ function ChatView({
             msg={{ id: '__streaming', role: 'assistant', content: streamContent, citations: streamCitations }}
             t={t}
             activeCit={activeCit}
-            onCitClick={onCitClick}
+            onCitClick={(n) => onCitClick(n, '__streaming')}
             isStreaming
           />
         )}
 
-        {/* Citation popup — floats inside the message area */}
+        {/* Citation popup — floats inside the message area, uses the source message's citations */}
         {activeCit !== null && (() => {
-          const all = [...messages].reverse().find((m) => m.role === 'assistant')?.citations ?? streamCitations
-          const cit = all[activeCit - 1]
-          return cit ? <CitationPopup t={t} citation={cit} index={activeCit} onClose={() => onCitClick(activeCit)} /> : null
+          const citations = activeCit.msgId === '__streaming'
+            ? streamCitations
+            : messages.find(m => m.id === activeCit.msgId)?.citations ?? []
+          const cit = citations[activeCit.n - 1]
+          return cit
+            ? <CitationPopup t={t} citation={cit} index={activeCit.n} onClose={() => onCitClick(activeCit.n, activeCit.msgId)} />
+            : null
         })()}
 
         <div ref={messagesEndRef} />
@@ -601,7 +891,7 @@ function ChatView({
 function MessageRow({
   msg, t, activeCit, onCitClick, isStreaming = false,
 }: {
-  msg: Message; t: Tokens; activeCit: number | null
+  msg: Message; t: Tokens; activeCit: { msgId: string; n: number } | null
   onCitClick: (n: number) => void; isStreaming?: boolean
 }) {
   return (
@@ -632,7 +922,7 @@ function MessageRow({
               ))}
             </div>
           ) : (
-            <RichText content={msg.content} activeCit={activeCit} onCitClick={onCitClick} t={t} />
+            <RichText content={msg.content} msgId={msg.id} activeCit={activeCit} onCitClick={onCitClick} t={t} />
           )}
 
           {/* Citation cards */}
@@ -643,7 +933,7 @@ function MessageRow({
                   key={cit.chunk_id}
                   citation={cit}
                   index={idx + 1}
-                  active={activeCit === idx + 1}
+                  active={activeCit?.msgId === msg.id && activeCit?.n === idx + 1}
                   onClick={() => onCitClick(idx + 1)}
                   t={t}
                 />
@@ -659,8 +949,8 @@ function MessageRow({
 // ── Rich text renderer ────────────────────────────────────────────────────
 
 function RichText({
-  content, activeCit, onCitClick, t,
-}: { content: string; activeCit: number | null; onCitClick: (n: number) => void; t: Tokens }) {
+  content, msgId, activeCit, onCitClick, t,
+}: { content: string; msgId: string; activeCit: { msgId: string; n: number } | null; onCitClick: (n: number) => void; t: Tokens }) {
   const parts = content.split(/(\[\d+\])/g)
 
   return (
@@ -669,7 +959,7 @@ function RichText({
         const match = part.match(/\[(\d+)\]/)
         if (match) {
           const n = parseInt(match[1])
-          const active = activeCit === n
+          const active = activeCit?.msgId === msgId && activeCit?.n === n
           return (
             <span
               key={i}
@@ -914,151 +1204,80 @@ function InputBar({
   )
 }
 
-// ── Ingest confirm overlay ────────────────────────────────────────────────
+// ── Settings view ─────────────────────────────────────────────────────────
 
-const BROWSER_PAGES_KB = 'Browser Pages'
+function SettingsView({ t, onClose }: { t: Tokens; onClose: () => void }) {
+  const [url, setUrl] = useState('')
+  const [saved, setSaved] = useState(false)
 
-async function findOrCreateBrowserPagesKB(): Promise<KBItem> {
-  const kbs = await listKBs()
-  const existing = kbs.find((kb) => kb.name === BROWSER_PAGES_KB)
-  if (existing) return existing
-  return createKB(BROWSER_PAGES_KB)
-}
+  useEffect(() => {
+    getBaseUrl().then(setUrl)
+  }, [])
 
-function IngestConfirm({
-  t, data, onClose, onSuccess, onSessionExpired,
-}: {
-  t: Tokens; data: IngestData
-  onClose: () => void
-  onSuccess: (kbId: string) => void
-  onSessionExpired: () => void
-}) {
-  const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState(false)
-  const [error, setError] = useState('')
-
-  const isUrlIngest = !!data.fileUrl
-
-  const handleConfirm = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const kb = await findOrCreateBrowserPagesKB()
-      if (isUrlIngest) {
-        await ingestUrl(kb.id, data.title, data.fileUrl!)
-      } else {
-        await uploadPageText(kb.id, data.title, data.text!)
-      }
-      setDone(true)
-      setTimeout(() => onSuccess(kb.id), 1400)
-    } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'Session expired') { onSessionExpired(); return }
-      setError(e instanceof Error ? e.message : 'Failed — file may require login or download permission. Try downloading and uploading manually via the webapp.')
-    } finally {
-      setLoading(false)
-    }
+  const handleSave = async () => {
+    const trimmed = url.trim()
+    if (!trimmed) return
+    await setBaseUrl(trimmed)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
-    <div style={{
-      position: 'absolute', inset: 0, zIndex: 50,
-      background: `${t.bg}F0`,
-      backdropFilter: 'blur(4px)',
-      display: 'flex', flexDirection: 'column', padding: '20px 16px',
-      animation: 'fadeIn 0.18s ease-out',
-    }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: t.text, fontFamily: SANS }}>
-          Add page to knowledge base
-        </span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.textTertiary, fontSize: 18, lineHeight: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: SANS }}>Settings</span>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: t.textTertiary, fontSize: 18, lineHeight: 1, padding: '0 2px',
+          }}
+        >
           ×
         </button>
       </div>
 
-      {/* Page info */}
-      <div style={{
-        padding: '11px 13px', borderRadius: 10, background: t.surface,
-        border: `1px solid ${t.border}`, marginBottom: 16,
-      }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: t.text, fontFamily: SANS, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {data.title}
-        </div>
-        <div style={{ fontSize: 11, color: t.textTertiary, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 8 }}>
-          {data.url}
-        </div>
-        {data.text ? (
-          <>
-            <div style={{ fontSize: 12, color: t.textSecondary, fontFamily: SANS, lineHeight: 1.55 }}>
-              {data.text.slice(0, 180).trim()}{data.text.length > 180 ? '…' : ''}
-            </div>
-            <div style={{ fontSize: 10.5, color: t.textTertiary, fontFamily: MONO, marginTop: 6 }}>
-              {(data.text.length / 1000).toFixed(1)} k chars
-            </div>
-          </>
-        ) : (
-          <div style={{ fontSize: 11, color: t.textTertiary, fontFamily: MONO, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Will download from Google
-          </div>
-        )}
+      {/* Server URL */}
+      <div>
+        <label style={{
+          fontSize: 11, fontWeight: 600, color: t.textSecondary,
+          fontFamily: SANS, display: 'block', marginBottom: 5,
+        }}>
+          Server URL
+        </label>
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => { setUrl(e.target.value); setSaved(false) }}
+          placeholder="http://localhost:8000"
+          style={{
+            width: '100%', padding: '9px 12px', borderRadius: 8,
+            border: `1px solid ${t.border}`, background: t.inputBg,
+            color: t.text, fontSize: 13, fontFamily: SANS,
+            outline: 'none', boxSizing: 'border-box',
+          } as React.CSSProperties}
+        />
+        <p style={{ fontSize: 11, color: t.textTertiary, fontFamily: SANS, marginTop: 5, marginBottom: 16 }}>
+          Base URL of the backend. Change to point to a remote server.
+        </p>
+        <button
+          onClick={handleSave}
+          disabled={!url.trim()}
+          style={{
+            padding: '8px 18px', borderRadius: 8,
+            border: saved ? `1px solid ${t.accentBorder}` : 'none',
+            background: saved ? t.accentSoft : t.accent,
+            color: saved ? t.accent : '#fff',
+            fontSize: 13, fontWeight: 600, fontFamily: SANS,
+            cursor: url.trim() ? 'pointer' : 'not-allowed',
+            opacity: url.trim() ? 1 : 0.6,
+            transition: 'all 0.15s',
+          } as React.CSSProperties}
+        >
+          {saved ? 'Saved ✓' : 'Save'}
+        </button>
       </div>
-
-      {/* Destination hint */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 7, marginBottom: 18,
-        fontSize: 12, color: t.textSecondary, fontFamily: SANS,
-      }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={t.accent} strokeWidth="2" strokeLinecap="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-        </svg>
-        Will be added to <strong style={{ color: t.text, fontWeight: 600, marginLeft: 3 }}>{BROWSER_PAGES_KB}</strong>
-      </div>
-
-      {error && (
-        <p style={{ fontSize: 12, color: t.danger, fontFamily: SANS, marginBottom: 12 }}>{error}</p>
-      )}
-
-      {done ? (
-        <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 13, color: t.accent, fontFamily: SANS, fontWeight: 600 }}>
-          ✓ Added — switching to chat…
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1, padding: '9px 0', borderRadius: 8,
-              border: `1px solid ${t.border}`, background: 'transparent',
-              color: t.textSecondary, fontSize: 13, fontFamily: SANS, cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={loading}
-            style={{
-              flex: 1, padding: '9px 0', borderRadius: 8, border: 'none',
-              background: t.accent, color: '#fff',
-              fontSize: 13, fontWeight: 600, fontFamily: SANS,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.65 : 1,
-            }}
-          >
-            {loading
-              ? (isUrlIngest ? 'Downloading…' : 'Adding…')
-              : 'Add to KB'
-            }
-          </button>
-        </div>
-      )}
     </div>
   )
 }

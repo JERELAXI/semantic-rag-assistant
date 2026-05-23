@@ -1,25 +1,48 @@
 import { useState } from 'react';
 import { LayoutDashboard, LogOut, MessageSquare, Settings } from 'lucide-react';
+
+function GraphIcon({ size = 16, color }: { size?: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <line x1="12" y1="12" x2="20" y2="12" stroke={color} strokeWidth="1.5" strokeOpacity="0.5"/>
+      <line x1="12" y1="12" x2="16" y2="5.1" stroke={color} strokeWidth="1.5" strokeOpacity="0.5"/>
+      <line x1="12" y1="12" x2="8" y2="5.1" stroke={color} strokeWidth="1.5" strokeOpacity="0.5"/>
+      <line x1="12" y1="12" x2="4" y2="12" stroke={color} strokeWidth="1.5" strokeOpacity="0.5"/>
+      <line x1="12" y1="12" x2="8" y2="18.9" stroke={color} strokeWidth="1.5" strokeOpacity="0.5"/>
+      <line x1="12" y1="12" x2="16" y2="18.9" stroke={color} strokeWidth="1.5" strokeOpacity="0.5"/>
+      <circle cx="20" cy="12" r="2" fill={color} opacity="0.7"/>
+      <circle cx="16" cy="5.1" r="2" fill={color} opacity="0.7"/>
+      <circle cx="8" cy="5.1" r="2" fill={color} opacity="0.7"/>
+      <circle cx="4" cy="12" r="2" fill={color} opacity="0.7"/>
+      <circle cx="8" cy="18.9" r="2" fill={color} opacity="0.7"/>
+      <circle cx="16" cy="18.9" r="2" fill={color} opacity="0.7"/>
+      <circle cx="12" cy="12" r="3.5" fill={color}/>
+    </svg>
+  );
+}
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../hooks/useTheme';
+import { useT, useLang } from '../../contexts/LangContext';
 import { FONT } from '../../styles/theme';
 
 const NAV_ITEMS = [
-  { path: '/', icon: LayoutDashboard, label: 'Knowledge Bases' },
-  { path: '/chat', icon: MessageSquare, label: 'Chat' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/dashboard', icon: LayoutDashboard, key: 'nav.knowledgeBases' },
+  { path: '/chat', icon: MessageSquare, key: 'nav.chat' },
+  { path: '/settings', icon: Settings, key: 'nav.settings' },
 ] as const;
 
 export function Sidebar() {
   const t = useTheme();
+  const tx = useT();
+  const { lang, setLang } = useLang();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [hoveredPath, setHoveredPath] = useState<string | null>(null);
 
   const isActive = (path: string) =>
-    path === '/' ? pathname === '/' : pathname.startsWith(path);
+    pathname === path || pathname.startsWith(path + '/');
 
   return (
     <div
@@ -57,17 +80,7 @@ export function Sidebar() {
             justifyContent: 'center',
           }}
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={t.accent}
-            strokeWidth="2"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+          <GraphIcon size={17} color={t.accent} />
         </div>
         <span style={{ fontSize: 15, fontWeight: 700, color: t.text, fontFamily: FONT }}>
           Semantic RAG
@@ -75,7 +88,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav items */}
-      {NAV_ITEMS.map(({ path, icon: Icon, label }) => {
+      {NAV_ITEMS.map(({ path, icon: Icon, key }) => {
         const active = isActive(path);
         const hovered = hoveredPath === path && !active;
         return (
@@ -98,12 +111,48 @@ export function Sidebar() {
             }}
           >
             <Icon size={16} />
-            <span style={{ fontSize: 13, fontWeight: 500, fontFamily: FONT }}>{label}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, fontFamily: FONT }}>{tx(key)}</span>
           </div>
         );
       })}
 
       <div style={{ flex: 1 }} />
+
+      {/* Language toggle */}
+      <div
+        style={{
+          margin: '0 16px 10px',
+          display: 'flex',
+          gap: 4,
+          padding: '4px',
+          borderRadius: 8,
+          background: t.surfaceAlt,
+          border: `1px solid ${t.borderSubtle}`,
+        }}
+      >
+        {(['uk', 'en'] as const).map((l) => (
+          <button
+            key={l}
+            onClick={() => setLang(l)}
+            style={{
+              flex: 1,
+              padding: '5px 0',
+              borderRadius: 5,
+              border: 'none',
+              background: lang === l ? t.accent : 'transparent',
+              color: lang === l ? '#fff' : t.textTri,
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: FONT,
+              cursor: 'pointer',
+              letterSpacing: '0.04em',
+              transition: 'all 0.15s',
+            }}
+          >
+            {l === 'uk' ? 'UA' : 'EN'}
+          </button>
+        ))}
+      </div>
 
       {/* User card */}
       <div
@@ -142,7 +191,7 @@ export function Sidebar() {
           onMouseLeave={(e) => (e.currentTarget.style.color = t.textTri)}
         >
           <LogOut size={12} />
-          Sign out
+          {tx('nav.signOut')}
         </button>
       </div>
     </div>

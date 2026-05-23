@@ -3,7 +3,7 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 // Event shapes emitted by POST /chat/sessions/:id/messages
 export interface TokenEvent     { token: string }
 export interface CitationsEvent { citations: Citation[] }
-export interface DoneEvent      { done: true }
+export interface DoneEvent      { done: true; final_content?: string; session_title?: string }
 export type SSEEvent = TokenEvent | CitationsEvent | DoneEvent;
 
 // Matches backend CitationResponse schema exactly

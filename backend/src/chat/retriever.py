@@ -2,21 +2,44 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 import uuid
 
+from openai import AsyncOpenAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.chat.schemas import SearchResult
-from src.core.embeddings import embed_query
+from src.core.config import settings
+from src.core.embeddings import embed_query, embed_texts
+
+logger = logging.getLogger(__name__)
+
+_llm_client = AsyncOpenAI(api_key=settings.openai_api_key)
 
 _RRF_K = 60
 _DEFAULT_CANDIDATE_POOL = 20
 
+_HYDE_PROMPT = (
+    "Given the question below, write a short paragraph that would be a perfect answer "
+    "found in a document. Do not say 'I think' or 'The answer is'. Just write the content "
+    "as if you're reading it from the actual document.\n\nQuestion: {query}"
+)
+
+_EXPAND_PROMPT = (
+    "Generate 3 alternative search queries for this question. Use different keywords and "
+    "phrasing. One per line, no numbering.\n\nQuestion: {query}"
+)
+
 # Matches alphanumeric/underscore runs (Unicode-aware) — anything else becomes a separator.
 # Drops punctuation/operators that would break to_tsquery() syntax.
 _TSQUERY_TOKEN = re.compile(r"\w+", re.UNICODE)
+
+
+async def _empty_str() -> str:
+    return ""
 
 
 def _build_or_tsquery(query: str) -> str:
@@ -114,6 +137,48 @@ class HybridRetriever:
             for row in rows
         ]
 
+    async def generate_hypothetical_answer(self, query: str) -> str:
+        """HyDE: generate a plausible answer paragraph to embed instead of the raw query.
+
+        Returns an empty string on failure — callers fall back to the raw query.
+        """
+        try:
+            response = await _llm_client.chat.completions.create(
+                model=settings.chat_model,
+                max_tokens=200,
+                temperature=0.0,
+                messages=[{"role": "user", "content": _HYDE_PROMPT.format(query=query)}],
+            )
+            return (response.choices[0].message.content or "").strip()
+        except Exception as exc:
+            logger.warning("HyDE generation failed (falling back to raw query): %s", exc)
+            return ""
+
+    async def expand_query(self, query: str) -> list[str]:
+        """Generate up to 3 alternative phrasings of the query. Returns [] on failure."""
+        try:
+            response = await _llm_client.chat.completions.create(
+                model=settings.chat_model,
+                max_tokens=150,
+                temperature=0.7,
+                messages=[{"role": "user", "content": _EXPAND_PROMPT.format(query=query)}],
+            )
+            content = (response.choices[0].message.content or "").strip()
+            variants = [line.strip() for line in content.splitlines() if line.strip()]
+            return variants[:3]
+        except Exception as exc:
+            logger.warning("Query expansion failed (falling back to single query): %s", exc)
+            return []
+
+    async def _embed_for_vector(self, query: str) -> list[float]:
+        """Embed via HyDE (hypothetical answer) when enabled, else embed the raw query."""
+        text_to_embed = query
+        if settings.hyde_enabled:
+            hypothetical = await self.generate_hypothetical_answer(query)
+            if hypothetical:
+                text_to_embed = hypothetical
+        return await embed_query(text_to_embed)
+
     async def hybrid_search(
         self,
         query: str,
@@ -121,12 +186,53 @@ class HybridRetriever:
         top_k: int = 5,
         candidate_pool: int = _DEFAULT_CANDIDATE_POOL,
     ) -> list[SearchResult]:
-        embedding = await embed_query(query)
+        embedding = await self._embed_for_vector(query)
 
         vector_results = await self.vector_search(embedding, knowledge_base_id, candidate_pool)
         fts_results = await self.fts_search(query, knowledge_base_id, candidate_pool)
 
         return _rrf_fuse(vector_results, fts_results, top_k)
+
+    async def _multi_query_hybrid(
+        self,
+        query: str,
+        knowledge_base_id: uuid.UUID,
+        top_k: int,
+        candidate_pool: int = _DEFAULT_CANDIDATE_POOL,
+    ) -> list[SearchResult]:
+        """Run hybrid search for the original query + expanded variants, merge by chunk_id.
+
+        Three concurrent phases instead of fully sequential LLM/DB calls:
+          1. expand_query + HyDE(original) in parallel
+          2. Embed [hyde_or_query, *variants] in a single batch call
+          3. All vector + FTS searches in parallel
+        HyDE is applied to the original query only; variants ride raw embeddings.
+        """
+        expand_task = self.expand_query(query)
+        hyde_task = self.generate_hypothetical_answer(query) if settings.hyde_enabled else _empty_str()
+        variants, hypothetical = await asyncio.gather(expand_task, hyde_task)
+
+        all_queries = [query, *variants]
+        original_text_to_embed = hypothetical or query
+        embeddings = await embed_texts([original_text_to_embed, *variants], input_type="query")
+
+        search_tasks: list = []
+        for emb, q in zip(embeddings, all_queries):
+            search_tasks.append(self.vector_search(emb, knowledge_base_id, candidate_pool))
+            search_tasks.append(self.fts_search(q, knowledge_base_id, candidate_pool))
+        search_results = await asyncio.gather(*search_tasks)
+
+        merged: dict[uuid.UUID, SearchResult] = {}
+        for i in range(len(all_queries)):
+            vec_res = search_results[2 * i]
+            fts_res = search_results[2 * i + 1]
+            fused = _rrf_fuse(vec_res, fts_res, candidate_pool)
+            for r in fused:
+                existing = merged.get(r.chunk_id)
+                if existing is None or r.score > existing.score:
+                    merged[r.chunk_id] = r
+
+        return sorted(merged.values(), key=lambda r: r.score, reverse=True)[:top_k]
 
     async def search(
         self,
@@ -136,10 +242,13 @@ class HybridRetriever:
         top_k: int = 5,
     ) -> list[SearchResult]:
         if mode == "vector":
-            embedding = await embed_query(query)
+            embedding = await self._embed_for_vector(query)
             return await self.vector_search(embedding, knowledge_base_id, top_k)
         if mode == "fts":
             return await self.fts_search(query, knowledge_base_id, top_k)
+        # Hybrid mode — apply multi-query expansion if enabled
+        if settings.query_expansion_enabled:
+            return await self._multi_query_hybrid(query, knowledge_base_id, top_k)
         return await self.hybrid_search(query, knowledge_base_id, top_k)
 
 

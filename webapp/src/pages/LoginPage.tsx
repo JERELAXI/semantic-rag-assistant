@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../hooks/useTheme';
+import { useT } from '../contexts/LangContext';
 import { FONT, type Tokens } from '../styles/theme';
 
 type Mode = 'login' | 'register';
@@ -21,12 +22,13 @@ function inputStyle(t: Tokens): React.CSSProperties {
   };
 }
 
-export function LoginPage() {
+export function LoginPage({ initialMode }: { initialMode?: Mode }) {
   const t = useTheme();
+  const tx = useT();
   const { user, loading, login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<Mode>(initialMode ?? 'login');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +36,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && user) navigate('/', { replace: true });
+    if (!loading && user) navigate('/dashboard', { replace: true });
   }, [user, loading, navigate]);
 
   if (loading) return null;
@@ -49,10 +51,10 @@ export function LoginPage() {
       } else {
         await register(email, password, displayName);
       }
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Something went wrong. Please try again.');
+      setError(typeof detail === 'string' ? detail : tx('login.error.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -108,7 +110,7 @@ export function LoginPage() {
             Semantic RAG
           </h1>
           <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, marginTop: 6 }}>
-            {mode === 'login' ? 'Sign in to continue' : 'Create your account'}
+            {mode === 'login' ? tx('login.subtitle.signIn') : tx('login.subtitle.register')}
           </p>
         </div>
 
@@ -143,7 +145,7 @@ export function LoginPage() {
                 transition: 'all 0.15s',
               }}
             >
-              {m === 'login' ? 'Sign in' : 'Sign up'}
+              {m === 'login' ? tx('login.tab.signIn') : tx('login.tab.signUp')}
             </button>
           ))}
         </div>
@@ -161,14 +163,14 @@ export function LoginPage() {
                   marginBottom: 6,
                 }}
               >
-                Name
+                {tx('login.label.name')}
               </label>
               <input
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 required
-                placeholder="Your name"
+                placeholder={tx('login.placeholder.name')}
                 style={inputStyle(t)}
               />
             </div>
@@ -184,14 +186,14 @@ export function LoginPage() {
                 marginBottom: 6,
               }}
             >
-              Email
+              {tx('login.label.email')}
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="you@example.com"
+              placeholder={tx('login.placeholder.email')}
               style={inputStyle(t)}
             />
           </div>
@@ -206,14 +208,14 @@ export function LoginPage() {
                 marginBottom: 6,
               }}
             >
-              Password
+              {tx('login.label.password')}
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="••••••••"
+              placeholder={tx('login.placeholder.password')}
               style={inputStyle(t)}
             />
           </div>
@@ -252,7 +254,11 @@ export function LoginPage() {
               transition: 'background 0.15s',
             }}
           >
-            {submitting ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+            {submitting
+              ? tx('login.loading')
+              : mode === 'login'
+                ? tx('login.submit.signIn')
+                : tx('login.submit.register')}
           </button>
         </form>
       </div>

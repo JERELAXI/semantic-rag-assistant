@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquarePlus, Trash2 } from 'lucide-react';
+import { MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useT, useLang } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { kbApi } from '../api/knowledgeBases';
 import { chatApi, type CitationResponse, type MessageResponse, type SessionResponse } from '../api/chat';
@@ -14,6 +15,8 @@ import type { KBResponse } from '../api/knowledgeBases';
 
 export function ChatPage() {
   const t = useTheme();
+  const tx = useT();
+  const { lang } = useLang();
   const { showToast } = useToast();
 
   const [kbs, setKbs] = useState<KBResponse[]>([]);
@@ -26,16 +29,16 @@ export function ChatPage() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
   const [streamingContent, setStreamingContent] = useState('');
-  const [streamingCitations, setStreamingCitations] = useState<CitationResponse[]>([]);
   const [streaming, setStreaming] = useState(false);
 
   const [activeCitation, setActiveCitation] = useState<{ citation: CitationResponse; index: number; messageId: string } | null>(null);
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Read prefs once on mount — remounts when navigating back from Settings
   const searchPrefs = getSearchPrefs();
 
   useEffect(() => {
@@ -49,7 +52,7 @@ export function ChatPage() {
     setActiveCitation(null);
     chatApi.getMessages(activeSessionId)
       .then(({ data }) => setMessages(data))
-      .catch(() => showToast('Failed to load messages', 'error'))
+      .catch(() => showToast(tx('toast.messagesLoadFailed'), 'error'))
       .finally(() => setLoadingMsgs(false));
   }, [activeSessionId]);
 
@@ -63,7 +66,7 @@ export function ChatPage() {
       const { data } = await chatApi.listSessions();
       setAllSessions(data);
     } catch {
-      showToast('Failed to load sessions', 'error');
+      showToast(tx('toast.sessionsLoadFailed'), 'error');
     } finally {
       setLoadingSessions(false);
     }
@@ -82,8 +85,31 @@ export function ChatPage() {
       setMessages([]);
       setActiveCitation(null);
     } catch {
-      showToast('Failed to create chat session', 'error');
+      showToast(tx('toast.sessionCreateFailed'), 'error');
     }
+  }
+
+  function startEditSession(s: SessionResponse) {
+    setEditingSessionId(s.id);
+    setEditingTitle(s.title ?? '');
+  }
+
+  async function commitEditSession(sessionId: string) {
+    const trimmed = editingTitle.trim();
+    setEditingSessionId(null);
+    if (!trimmed) return;
+    const prev = allSessions.find((s) => s.id === sessionId);
+    if (trimmed === (prev?.title ?? '')) return;
+    try {
+      const { data } = await chatApi.renameSession(sessionId, trimmed);
+      setAllSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: data.title } : s)));
+    } catch {
+      showToast(tx('toast.sessionRenameFailed'), 'error');
+    }
+  }
+
+  function cancelEditSession() {
+    setEditingSessionId(null);
   }
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: string) {
@@ -96,7 +122,7 @@ export function ChatPage() {
         setMessages([]);
       }
     } catch {
-      showToast('Failed to delete session', 'error');
+      showToast(tx('toast.sessionDeleteFailed'), 'error');
     }
   }
 
@@ -104,7 +130,6 @@ export function ChatPage() {
     if (!activeSessionId || streaming) return;
     setStreaming(true);
     setStreamingContent('');
-    setStreamingCitations([]);
 
     const userMsg: MessageResponse = {
       id: crypto.randomUUID(),
@@ -126,27 +151,31 @@ export function ChatPage() {
           setStreamingContent(accContent);
         } else if ('citations' in event) {
           accCitations = event.citations;
-          setStreamingCitations(accCitations);
         } else if ('done' in event) {
+          const finalContent = event.final_content ?? accContent;
           setStreamingContent('');
-          setStreamingCitations([]);
           setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: accContent,
+              content: finalContent,
               created_at: new Date().toISOString(),
               citations: accCitations,
             },
           ]);
+          if (event.session_title) {
+            const newTitle = event.session_title;
+            setAllSessions((prev) =>
+              prev.map((s) => (s.id === activeSessionId ? { ...s, title: newTitle } : s)),
+            );
+          }
           await loadSessions();
         }
       }
     } catch {
-      showToast('Streaming failed — please try again.', 'error');
+      showToast(tx('toast.streamFailed'), 'error');
       setStreamingContent('');
-      setStreamingCitations([]);
     } finally {
       setStreaming(false);
     }
@@ -162,8 +191,9 @@ export function ChatPage() {
 
   const activeKb = kbs.find((kb) => kb.id === selectedKbId);
 
+  const locale = lang === 'uk' ? 'uk-UA' : 'en-US';
   const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -180,7 +210,7 @@ export function ChatPage() {
         {/* KB selector */}
         <div style={{ padding: '14px 12px', borderBottom: `1px solid ${t.borderSubtle}` }}>
           <label style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Knowledge Base
+            {tx('chat.kbLabel')}
           </label>
           <select
             value={selectedKbId}
@@ -197,7 +227,7 @@ export function ChatPage() {
               fontSize: 13, fontFamily: FONT, outline: 'none', cursor: 'pointer',
             }}
           >
-            <option value="">Select KB…</option>
+            <option value="">{tx('chat.selectKb')}</option>
             {kbs.map((kb) => (
               <option key={kb.id} value={kb.id}>{kb.name}</option>
             ))}
@@ -221,7 +251,7 @@ export function ChatPage() {
             }}
           >
             <MessageSquarePlus size={14} />
-            New chat
+            {tx('chat.newChat')}
           </button>
         </div>
 
@@ -238,44 +268,82 @@ export function ChatPage() {
             </div>
           ) : sessions.length === 0 ? (
             <p style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, padding: '16px 12px', textAlign: 'center' }}>
-              {selectedKbId ? 'No chats yet' : 'Select a KB to see chats'}
+              {selectedKbId ? tx('chat.empty.noChats') : tx('chat.empty.selectKb')}
             </p>
           ) : (
             sessions.map((s) => {
               const isActive = s.id === activeSessionId;
               const isHovered = hoveredSessionId === s.id;
+              const isEditing = editingSessionId === s.id;
               return (
                 <div
                   key={s.id}
-                  onClick={() => setActiveSessionId(s.id)}
+                  onClick={() => !isEditing && setActiveSessionId(s.id)}
                   onMouseEnter={() => setHoveredSessionId(s.id)}
                   onMouseLeave={() => setHoveredSessionId(null)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '9px 12px', cursor: 'pointer',
+                    padding: '9px 12px', cursor: isEditing ? 'default' : 'pointer',
                     background: isActive ? t.accentSoft : isHovered ? t.surfaceAlt : 'transparent',
                     borderLeft: `2px solid ${isActive ? t.accent : 'transparent'}`,
                     transition: 'background 0.1s',
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{
-                      fontSize: 13, fontWeight: isActive ? 500 : 400,
-                      color: isActive ? t.accent : t.text, fontFamily: FONT,
-                      margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {s.title ?? 'Untitled chat'}
-                    </p>
+                    {isEditing ? (
+                      <input
+                        autoFocus
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitEditSession(s.id); }
+                          if (e.key === 'Escape') cancelEditSession();
+                        }}
+                        onBlur={() => commitEditSession(s.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          width: '100%', fontSize: 13, fontWeight: 500,
+                          color: t.accent, fontFamily: FONT,
+                          background: 'transparent', border: 'none',
+                          borderBottom: `1px solid ${t.accent}`,
+                          outline: 'none', padding: '0 0 1px', margin: 0,
+                        }}
+                      />
+                    ) : (
+                      <p
+                        onDoubleClick={() => startEditSession(s)}
+                        style={{
+                          fontSize: 13, fontWeight: isActive ? 500 : 400,
+                          color: isActive ? t.accent : t.text, fontFamily: FONT,
+                          margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {s.title ?? tx('chat.untitled')}
+                      </p>
+                    )}
                     <p style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, margin: '2px 0 0' }}>
                       {fmtDate(s.updated_at)}
                     </p>
                   </div>
+                  {isActive && !isEditing && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startEditSession(s); }}
+                      style={{
+                        background: 'none', border: 'none', padding: 3,
+                        borderRadius: 5, cursor: 'pointer', color: t.accent,
+                        opacity: isHovered ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
+                        display: 'flex', alignItems: 'center',
+                      }}
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => handleDeleteSession(e, s.id)}
                     style={{
                       background: 'none', border: 'none', padding: 3,
                       borderRadius: 5, cursor: 'pointer', color: t.textTri,
-                      opacity: isHovered ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
+                      opacity: isHovered && !isEditing ? 1 : 0, transition: 'opacity 0.1s', flexShrink: 0,
                       display: 'flex', alignItems: 'center',
                     }}
                   >
@@ -297,7 +365,7 @@ export function ChatPage() {
             display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 13, color: t.textTri, fontFamily: FONT }}>Knowledge Base:</span>
+          <span style={{ fontSize: 13, color: t.textTri, fontFamily: FONT }}>{tx('chat.kbbar.label')}</span>
           <span style={{ fontSize: 13, fontWeight: 500, color: t.text, fontFamily: FONT }}>
             {activeKb?.name ?? '—'}
           </span>
@@ -324,7 +392,7 @@ export function ChatPage() {
                   }}
                 >
                   <MessageSquarePlus size={32} strokeWidth={1.5} color={t.textTri} />
-                  Ask a question to start the conversation
+                  {tx('chat.message.startPrompt')}
                 </div>
               )}
 
@@ -345,12 +413,8 @@ export function ChatPage() {
                 <MessageBubble
                   role="assistant"
                   content={streamingContent}
-                  citations={streamingCitations}
+                  citations={[]}
                   streaming={true}
-                  onCitationClick={(cit, idx) => handleCitationClick(cit, idx, 'streaming')}
-                  activeCitationIndex={
-                    activeCitation?.messageId === 'streaming' ? activeCitation.index : null
-                  }
                 />
               )}
 
@@ -378,6 +442,7 @@ export function ChatPage() {
 
 function EmptyState({ hasKb, onNewChat }: { hasKb: boolean; onNewChat: () => void }) {
   const t = useTheme();
+  const tx = useT();
   return (
     <div
       style={{
@@ -387,7 +452,7 @@ function EmptyState({ hasKb, onNewChat }: { hasKb: boolean; onNewChat: () => voi
     >
       <MessageSquarePlus size={40} color={t.textTri} strokeWidth={1.5} />
       <p style={{ fontSize: 14, color: t.textSec, fontFamily: FONT, margin: 0 }}>
-        {hasKb ? 'Start a new chat' : 'Select a knowledge base to begin'}
+        {hasKb ? tx('chat.emptyState.hasKb') : tx('chat.emptyState.noKb')}
       </p>
       {hasKb && (
         <button
@@ -399,7 +464,7 @@ function EmptyState({ hasKb, onNewChat }: { hasKb: boolean; onNewChat: () => voi
             fontSize: 13, fontWeight: 500, fontFamily: FONT, cursor: 'pointer',
           }}
         >
-          New chat
+          {tx('chat.emptyState.newChat')}
         </button>
       )}
     </div>

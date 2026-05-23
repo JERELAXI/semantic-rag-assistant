@@ -19,23 +19,6 @@ export default defineConfig(({ mode }) => {
     }
   }
 
-  // Standalone build for the content script (IIFE — classic script required for content_scripts)
-  if (mode === 'content') {
-    return {
-      build: {
-        lib: {
-          entry: resolve(__dirname, 'src/content.ts'),
-          formats: ['iife'],
-          name: 'ContentScript',
-          fileName: () => 'content.js',
-        },
-        outDir: 'dist',
-        emptyOutDir: false,
-        minify: false,
-      },
-    }
-  }
-
   // Default: SidePanel React app
   return {
     plugins: [react()],

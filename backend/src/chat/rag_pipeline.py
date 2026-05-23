@@ -23,7 +23,6 @@ _RERANKER_CANDIDATE_POOL = 20
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 
 _MAX_HISTORY = 20
-_CONTENT_EXCERPT_LEN = 200
 
 _CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 
@@ -47,9 +46,33 @@ background, definitions, or commentary that is not asked for.
 language — use it regardless of language, translating from the context as needed. A \
 question in Ukrainian is answered in Ukrainian even if the context is in English, and \
 vice versa.
+6. Do not treat tangential mentions as project facts. If a technology, framework, or \
+tool is only MENTIONED in passing in the context (e.g., as a dependency, as part of a \
+library name, or in a comparison table) but is NOT described as being used in the \
+project — do NOT claim it is used in the project. Only state something is part of the \
+project if the context explicitly says so. Examples: if context says "uv is built in \
+Rust" — this does NOT mean Rust is used in the project, it means the tool uv happens \
+to be written in Rust. If context mentions "pgvector uses C++ internally" — this does \
+NOT mean C++ is part of the project.
 
 Context:
 {context}"""
+
+
+def _auto_title(query: str, max_len: int = 40) -> str:
+    """Generate a short session title from the user's first message.
+
+    Truncates to max_len, trimmed back to the last word boundary so we don't cut
+    mid-word. Adds "…" when truncation actually shortened the input.
+    """
+    cleaned = " ".join(query.strip().split())  # collapse whitespace
+    if len(cleaned) <= max_len:
+        return cleaned
+    truncated = cleaned[:max_len]
+    last_space = truncated.rfind(" ")
+    if last_space > 0:
+        truncated = truncated[:last_space]
+    return truncated + "…"
 
 
 def _filter_and_renumber(
@@ -109,7 +132,17 @@ class RAGPipeline:
     ) -> AsyncGenerator[str, None]:
         await save_message(self._db, session_id, "user", query)
 
-        kb_id = await self._session_kb(session_id)
+        session = await self._get_session(session_id)
+
+        # Auto-title on the first user message (session.title starts NULL unless the
+        # caller passed one explicitly when creating the session).
+        new_title: str | None = None
+        if session.title is None:
+            new_title = _auto_title(query)
+            session.title = new_title
+            await self._db.commit()
+
+        kb_id = session.knowledge_base_id
 
         history = await get_recent_messages(self._db, session_id, _MAX_HISTORY)
 
@@ -148,7 +181,10 @@ class RAGPipeline:
             CitationResponse(
                 chunk_id=r.chunk_id,
                 document_title=r.document_title,
-                content_excerpt=r.content[:_CONTENT_EXCERPT_LEN],
+                # Show the raw chunk to the user — `r.content` may carry a "Context: ..."
+                # prefix added during contextual chunking; the user should never see that.
+                # Full text — citation panel scrolls.
+                content_excerpt=r.metadata.get("original_content") or r.content,
                 # Show pre-fusion vector cosine similarity (e.g. 0.58 → "58% match").
                 # Fall back to `score` for FTS-only chunks where no vector similarity exists.
                 relevance_score=r.vector_score if r.vector_score is not None else r.score,
@@ -156,11 +192,15 @@ class RAGPipeline:
             for r in cited_results
         ]
         yield _sse({"citations": [c.model_dump(mode="json") for c in citations]})
-        yield _sse({"done": True, "final_content": final_content})
 
-    async def _session_kb(self, session_id: uuid.UUID) -> uuid.UUID:
+        done_payload: dict = {"done": True, "final_content": final_content}
+        if new_title is not None:
+            done_payload["session_title"] = new_title
+        yield _sse(done_payload)
+
+    async def _get_session(self, session_id: uuid.UUID) -> Session:
         result = await self._db.execute(
-            select(Session.knowledge_base_id).where(Session.id == session_id)
+            select(Session).where(Session.id == session_id)
         )
         return result.scalar_one()
 

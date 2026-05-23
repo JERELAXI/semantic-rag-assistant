@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
@@ -18,6 +18,7 @@ from src.chat.schemas import (
     SearchResult,
     SessionCreate,
     SessionResponse,
+    SessionUpdate,
 )
 from src.chat.service import (
     create_session,
@@ -25,9 +26,11 @@ from src.chat.service import (
     get_session,
     get_session_with_messages,
     list_user_sessions,
+    update_session_title,
 )
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
+from src.core.rate_limit import limiter
 from src.knowledge_bases.service import check_kb_access
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -38,7 +41,9 @@ def _to_message_response(message: Message) -> MessageResponse:
         CitationResponse(
             chunk_id=c.chunk_id,
             document_title=c.chunk.document.filename,
-            content_excerpt=c.chunk.content[:200],
+            # Prefer the raw chunk text stored in metadata; falls back to `content` for
+            # chunks ingested before contextual chunking was enabled.
+            content_excerpt=(c.chunk.chunk_metadata.get("original_content") or c.chunk.content)[:200],
             relevance_score=c.score or 0.0,
         )
         for c in message.citations
@@ -101,6 +106,17 @@ async def get_messages(
     return [_to_message_response(m) for m in session.messages]
 
 
+@router.patch("/sessions/{session_id}", response_model=SessionResponse)
+async def rename(
+    session_id: uuid.UUID,
+    body: SessionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SessionResponse:
+    session = await update_session_title(db, session_id, current_user, body.title)
+    return SessionResponse.model_validate(session)
+
+
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete(
     session_id: uuid.UUID,
@@ -113,7 +129,9 @@ async def delete(
 # ── Messages (SSE stream) ──────────────────────────────────────────────────
 
 @router.post("/sessions/{session_id}/messages")
+@limiter.limit("20/minute")
 async def send_message(
+    request: Request,
     session_id: uuid.UUID,
     body: MessageCreate,
     db: AsyncSession = Depends(get_db),

@@ -78,6 +78,16 @@ async def get_session_with_messages(
     return session
 
 
+async def update_session_title(
+    db: AsyncSession, session_id: uuid.UUID, user: User, title: str
+) -> Session:
+    session = await _get_owned_session(db, session_id, user)
+    session.title = title
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
 async def delete_session(
     db: AsyncSession, session_id: uuid.UUID, user: User
 ) -> None:

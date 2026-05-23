@@ -14,7 +14,7 @@ from src.auth.models import User
 from src.core.config import settings
 from src.core.exceptions import ConflictError, NotFoundError
 from src.documents.models import Chunk, Document
-from src.knowledge_bases.service import check_kb_access
+from src.knowledge_bases.service import check_kb_access, check_kb_write_access
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
 
@@ -24,6 +24,20 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "text/plain": ".txt",
     "text/markdown": ".md",
 }
+
+# Magic bytes used to verify actual file content matches declared MIME type.
+# text/plain and text/markdown have no fixed magic bytes so they are omitted.
+_MAGIC_BYTES: dict[str, bytes] = {
+    "application/pdf": b"%PDF",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": b"PK\x03\x04",
+}
+
+
+def _verify_magic_bytes(content_type: str, data: bytes) -> bool:
+    magic = _MAGIC_BYTES.get(content_type)
+    if magic is None:
+        return True
+    return data[: len(magic)] == magic
 
 
 async def ingest_document_bytes(
@@ -35,10 +49,13 @@ async def ingest_document_bytes(
     data: bytes,
     filename: str | None = None,
 ) -> Document:
-    await check_kb_access(db, knowledge_base_id, user)
+    await check_kb_write_access(db, knowledge_base_id, user)
 
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise ValueError(f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}")
+
+    if not _verify_magic_bytes(content_type, data):
+        raise ValueError(f"File content does not match declared type: {content_type}")
 
     content_hash = hashlib.sha256(data).hexdigest()
     existing = await db.execute(
@@ -54,7 +71,9 @@ async def ingest_document_bytes(
     doc_dir = UPLOAD_DIR / str(doc_id)
     os.makedirs(doc_dir, exist_ok=True)
 
-    safe_filename = filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    # Use only the basename to prevent path traversal (e.g. ../../etc/passwd → passwd).
+    raw_name = filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    safe_filename = Path(raw_name).name or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
     file_path = doc_dir / safe_filename
     file_path.write_bytes(data)
 
@@ -120,6 +139,7 @@ async def list_documents(db: AsyncSession, knowledge_base_id: uuid.UUID, user: U
 
 async def delete_document(db: AsyncSession, document_id: uuid.UUID, user: User) -> None:
     document = await get_document(db, document_id, user)
+    await check_kb_write_access(db, document.knowledge_base_id, user)
 
     file_path = Path(document.file_path)
     if file_path.exists():

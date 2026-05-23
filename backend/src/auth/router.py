@@ -1,6 +1,6 @@
 """Auth routes: POST /register, POST /login, POST /refresh, GET /me."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,7 @@ from src.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, UserR
 from src.auth.service import authenticate_user, refresh_tokens, register_user
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
+from src.core.rate_limit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -18,12 +19,14 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+@limiter.limit("3/minute")
+async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     return await register_user(db, body.email, body.password, body.display_name)
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+@limiter.limit("5/minute")
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     return await authenticate_user(db, body.email, body.password)
 
 

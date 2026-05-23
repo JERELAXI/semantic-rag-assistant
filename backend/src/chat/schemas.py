@@ -35,6 +35,10 @@ class SessionCreate(BaseModel):
     title: str | None = Field(None, max_length=500)
 
 
+class SessionUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+
+
 class SessionResponse(BaseModel):
     model_config = {"from_attributes": True}
 

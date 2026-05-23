@@ -1,19 +1,34 @@
-import { useState } from 'react';
-import { Server } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTheme } from '../hooks/useTheme';
+import { useT } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { SEARCH_MODE_KEY, TOP_K_KEY, type SearchMode, getSearchPrefs } from '../hooks/useSearchPrefs';
+import { settingsApi } from '../api/settings';
 
 export { getSearchPrefs };
 
 export function SettingsPage() {
   const t = useTheme();
+  const tx = useT();
   const [searchMode, setSearchMode] = useState<SearchMode>(
     () => (localStorage.getItem(SEARCH_MODE_KEY) as SearchMode) ?? 'hybrid',
   );
   const [topK, setTopK] = useState<number>(
     () => parseInt(localStorage.getItem(TOP_K_KEY) ?? '5', 10),
   );
+
+  const [provider, setProvider] = useState<string>('openai');
+  const [rerankerEnabled, setRerankerEnabled] = useState<boolean>(true);
+  const [saving, setSaving] = useState(false);
+  const [showProviderWarning, setShowProviderWarning] = useState(false);
+  const [pendingProvider, setPendingProvider] = useState<string | null>(null);
+
+  useEffect(() => {
+    settingsApi.get().then((res) => {
+      setProvider(res.data.embedding_provider);
+      setRerankerEnabled(res.data.reranker_enabled);
+    });
+  }, []);
 
   function handleSearchMode(mode: SearchMode) {
     setSearchMode(mode);
@@ -25,25 +40,55 @@ export function SettingsPage() {
     localStorage.setItem(TOP_K_KEY, String(value));
   }
 
+  function handleProviderClick(value: string) {
+    if (value === provider || saving) return;
+    setPendingProvider(value);
+    setShowProviderWarning(true);
+  }
+
+  async function confirmProviderSwitch() {
+    if (!pendingProvider) return;
+    setSaving(true);
+    try {
+      const res = await settingsApi.patch({ embedding_provider: pendingProvider });
+      setProvider(res.data.embedding_provider);
+    } finally {
+      setSaving(false);
+      setShowProviderWarning(false);
+      setPendingProvider(null);
+    }
+  }
+
+  function cancelProviderSwitch() {
+    setShowProviderWarning(false);
+    setPendingProvider(null);
+  }
+
+  async function handleRerankerToggle() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const res = await settingsApi.patch({ reranker_enabled: !rerankerEnabled });
+      setRerankerEnabled(res.data.reranker_enabled);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div style={{ padding: '32px 40px', maxWidth: 600 }}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: t.text, fontFamily: FONT, margin: 0 }}>
-          Settings
+          {tx('settings.heading')}
         </h1>
         <p style={{ fontSize: 13, color: t.textSec, fontFamily: FONT, marginTop: 4, marginBottom: 0 }}>
-          Search preferences and server configuration
+          {tx('settings.subtitle')}
         </p>
       </div>
 
-      {/* Search Preferences */}
-      <SectionLabel
-        title="Search Preferences"
-        sub="Saved in your browser — sent with every chat request"
-        t={t}
-      />
+      <SectionLabel title={tx('settings.search.title')} sub={tx('settings.search.subtitle')} t={t} />
 
-      <SettingRow label="Search Mode" desc="Retrieval strategy used for every query" isLast={false} t={t}>
+      <SettingRow label={tx('settings.searchMode.label')} desc={tx('settings.searchMode.desc')} isLast={false} t={t}>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['vector', 'fts', 'hybrid'] as SearchMode[]).map((m) => (
             <ModeBtn key={m} label={m} active={searchMode === m} onClick={() => handleSearchMode(m)} t={t} />
@@ -51,7 +96,7 @@ export function SettingsPage() {
         </div>
       </SettingRow>
 
-      <SettingRow label={`Top K — ${topK}`} desc="Number of chunks retrieved as context" isLast t={t}>
+      <SettingRow label={tx('settings.topK.label', { value: topK })} desc={tx('settings.topK.desc')} isLast t={t}>
         <div style={{ width: 180 }}>
           <input
             type="range"
@@ -70,35 +115,57 @@ export function SettingsPage() {
 
       <div style={{ height: 32 }} />
 
-      {/* Server Configuration */}
-      <SectionLabel
-        title="Server Configuration"
-        sub="Managed via environment variables — read-only"
-        t={t}
-      />
+      <SectionLabel title={tx('settings.server.title')} sub={tx('settings.server.subtitle')} t={t} />
 
       <SettingRow
-        label="Embedding Provider"
-        desc="Model used to vectorise document chunks"
-        serverNote
+        label={tx('settings.embedding.label')}
+        desc={tx('settings.embedding.desc')}
         isLast={false}
         t={t}
       >
         <div style={{ display: 'flex', gap: 6 }}>
-          <ModeBtn label="OpenAI" active disabled t={t} />
-          <ModeBtn label="NVIDIA NIM" active={false} disabled t={t} />
+          <ModeBtn
+            label="OpenAI"
+            active={provider === 'openai'}
+            onClick={() => handleProviderClick('openai')}
+            disabled={saving}
+            t={t}
+          />
+          <ModeBtn
+            label="NVIDIA NIM"
+            active={provider === 'nvidia'}
+            onClick={() => handleProviderClick('nvidia')}
+            disabled={saving}
+            t={t}
+          />
         </div>
       </SettingRow>
 
       <SettingRow
-        label="NVIDIA Reranker"
-        desc="Cross-encoder reranking of retrieved chunks"
-        serverNote
+        label={tx('settings.reranker.label')}
+        desc={tx('settings.reranker.desc')}
         isLast
         t={t}
       >
-        <Toggle on={false} t={t} />
+        <Toggle on={rerankerEnabled} disabled={saving} onClick={handleRerankerToggle} t={t} />
       </SettingRow>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 16 }}>
+        <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO }}>
+          {tx('settings.restart.note')}
+        </span>
+      </div>
+
+      {showProviderWarning && (
+        <ProviderWarningModal
+          pendingProvider={pendingProvider ?? ''}
+          onConfirm={confirmProviderSwitch}
+          onCancel={cancelProviderSwitch}
+          saving={saving}
+          t={t}
+          tx={tx}
+        />
+      )}
     </div>
   );
 }
@@ -120,11 +187,10 @@ function SectionLabel({ title, sub, t }: { title: string; sub: string; t: Return
 }
 
 function SettingRow({
-  label, desc, serverNote, isLast, children, t,
+  label, desc, isLast, children, t,
 }: {
   label: string;
   desc: string;
-  serverNote?: boolean;
   isLast: boolean;
   children: React.ReactNode;
   t: ReturnType<typeof useTheme>;
@@ -138,14 +204,6 @@ function SettingRow({
       <div style={{ flex: 1, marginRight: 24 }}>
         <div style={{ fontSize: 14, fontWeight: 500, color: t.text, fontFamily: FONT }}>{label}</div>
         <div style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, marginTop: 3 }}>{desc}</div>
-        {serverNote && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
-            <Server size={10} color={t.textTri} />
-            <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO }}>
-              Configured on server via .env
-            </span>
-          </div>
-        )}
       </div>
       <div style={{ flexShrink: 0 }}>{children}</div>
     </div>
@@ -180,22 +238,92 @@ function ModeBtn({
   );
 }
 
-function Toggle({ on, t }: { on: boolean; t: ReturnType<typeof useTheme> }) {
+function Toggle({
+  on, disabled, onClick, t,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  t: ReturnType<typeof useTheme>;
+}) {
   return (
     <div
+      onClick={disabled ? undefined : onClick}
+      role="switch"
+      aria-checked={on}
       style={{
         width: 44, height: 24, borderRadius: 12,
         background: on ? t.accent : t.border,
-        cursor: 'default', position: 'relative',
+        cursor: disabled ? 'default' : 'pointer', position: 'relative',
         transition: 'background 0.2s',
-        opacity: 0.65, flexShrink: 0,
+        opacity: disabled ? 0.65 : 1, flexShrink: 0,
       }}
     >
       <div style={{
         width: 18, height: 18, borderRadius: 9, background: '#fff',
         position: 'absolute', top: 3, left: on ? 23 : 3,
         boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        transition: 'left 0.2s',
       }} />
+    </div>
+  );
+}
+
+function ProviderWarningModal({
+  pendingProvider, onConfirm, onCancel, saving, t, tx,
+}: {
+  pendingProvider: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  t: ReturnType<typeof useTheme>;
+  tx: (key: string) => string;
+}) {
+  const label = pendingProvider === 'nvidia' ? 'NVIDIA NIM' : 'OpenAI';
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+    }}>
+      <div style={{
+        background: t.surface, border: `1px solid ${t.border}`,
+        borderRadius: 12, padding: '28px 32px', maxWidth: 420, width: '90%',
+      }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 600, color: t.text, fontFamily: FONT }}>
+          {tx('settings.provider.warning.title')}
+        </h3>
+        <p style={{ margin: '0 0 8px', fontSize: 13, color: t.textSec, fontFamily: FONT, lineHeight: 1.5 }}>
+          {tx('settings.provider.warning.body')}
+        </p>
+        <p style={{ margin: '0 0 24px', fontSize: 13, color: t.textSec, fontFamily: FONT }}>
+          → <strong style={{ color: t.text }}>{label}</strong>
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            disabled={saving}
+            style={{
+              padding: '8px 18px', borderRadius: 8, fontSize: 13,
+              border: `1px solid ${t.border}`, background: 'transparent',
+              color: t.textSec, cursor: 'pointer', fontFamily: FONT,
+            }}
+          >
+            {tx('settings.provider.warning.cancel')}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={saving}
+            style={{
+              padding: '8px 18px', borderRadius: 8, fontSize: 13,
+              border: 'none', background: t.accent,
+              color: '#fff', cursor: saving ? 'default' : 'pointer',
+              fontFamily: FONT, opacity: saving ? 0.65 : 1,
+            }}
+          >
+            {saving ? '…' : tx('settings.provider.warning.confirm')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
