@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Semantic RAG Assistant",
+  "name": "Semantic RAG",
   "version": "1.0.0",
-  "description": "Chat with your knowledge bases while browsing",
+  "description": "Інтелектуальний помічник для роботи з базами знань. Завантажуйте документи, ставте питання та отримуйте відповіді з посиланнями на джерела.",
   "permissions": ["sidePanel", "activeTab", "storage", "tabs", "scripting"],
   "icons": {
-    "16": "icon.svg",
-    "48": "icon.svg",
-    "128": "icon.svg"
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
   },
   "side_panel": {
     "default_path": "index.html"
@@ -15,9 +15,9 @@
   "action": {
     "default_title": "Open Semantic RAG",
     "default_icon": {
-      "16": "icon.svg",
-      "48": "icon.svg",
-      "128": "icon.svg"
+      "16": "icon-16.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
     }
   },
   "background": {
