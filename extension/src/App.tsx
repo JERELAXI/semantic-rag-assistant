@@ -3,6 +3,7 @@ import { darkTokens, lightTokens, type Tokens, SANS, MONO } from './theme'
 import {
   login, storeTokens, clearTokens, isLoggedIn,
   listKBs, createKB, createSession, uploadPageText, getDocumentStatus,
+  getBaseUrl, setBaseUrl,
   type KBItem,
 } from './api'
 import { streamMessage, type Citation } from './stream'
@@ -208,6 +209,7 @@ function AppShell({
   onSessionExpired: () => void
 }) {
   const [view, setView] = useState<'chat' | 'sources'>('chat')
+  const [showSettings, setShowSettings] = useState(false)
   const [kbs, setKbs] = useState<KBItem[]>([])
   const [selectedKbId, setSelectedKbId] = useState('')
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -358,7 +360,14 @@ function AppShell({
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: t.bg, position: 'relative' }}>
       <style>{`::-webkit-scrollbar-thumb { background: ${t.scrollThumb}; }`}</style>
 
-      <PanelHeader t={t} view={view} onViewChange={setView} onLogout={onLogout} />
+      <PanelHeader
+        t={t}
+        view={view}
+        onViewChange={setView}
+        onLogout={onLogout}
+        showSettings={showSettings}
+        onSettingsClick={() => setShowSettings(!showSettings)}
+      />
 
       <KBSelector
         t={t}
@@ -382,33 +391,37 @@ function AppShell({
         />
       )}
 
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {processingDoc ? (
-          <ProcessingView
-            t={t}
-            docId={processingDoc.docId}
-            kbId={processingDoc.kbId}
-            onReady={(id) => { setProcessingDoc(null); handleKBSelect(id) }}
-            onDismiss={() => setProcessingDoc(null)}
-          />
-        ) : view === 'chat' ? (
-          <ChatView
-            t={t}
-            messages={messages}
-            streaming={streaming}
-            streamContent={streamContent}
-            streamCitations={streamCitations}
-            sessionId={sessionId}
-            activeCit={activeCit}
-            onCitClick={(n, msgId) => setActiveCit(
-              activeCit?.msgId === msgId && activeCit?.n === n ? null : { msgId, n },
-            )}
-            onSend={handleSend}
-          />
-        ) : (
-          <SourcesView t={t} citations={lastCitations} />
-        )}
-      </div>
+      {showSettings ? (
+        <SettingsView t={t} onClose={() => setShowSettings(false)} />
+      ) : (
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {processingDoc ? (
+            <ProcessingView
+              t={t}
+              docId={processingDoc.docId}
+              kbId={processingDoc.kbId}
+              onReady={(id) => { setProcessingDoc(null); handleKBSelect(id) }}
+              onDismiss={() => setProcessingDoc(null)}
+            />
+          ) : view === 'chat' ? (
+            <ChatView
+              t={t}
+              messages={messages}
+              streaming={streaming}
+              streamContent={streamContent}
+              streamCitations={streamCitations}
+              sessionId={sessionId}
+              activeCit={activeCit}
+              onCitClick={(n, msgId) => setActiveCit(
+                activeCit?.msgId === msgId && activeCit?.n === n ? null : { msgId, n },
+              )}
+              onSend={handleSend}
+            />
+          ) : (
+            <SourcesView t={t} citations={lastCitations} />
+          )}
+        </div>
+      )}
 
     </div>
   )
@@ -417,8 +430,15 @@ function AppShell({
 // ── Header ────────────────────────────────────────────────────────────────
 
 function PanelHeader({
-  t, view, onViewChange, onLogout,
-}: { t: Tokens; view: 'chat' | 'sources'; onViewChange: (v: 'chat' | 'sources') => void; onLogout: () => void }) {
+  t, view, onViewChange, onLogout, showSettings, onSettingsClick,
+}: {
+  t: Tokens
+  view: 'chat' | 'sources'
+  onViewChange: (v: 'chat' | 'sources') => void
+  onLogout: () => void
+  showSettings: boolean
+  onSettingsClick: () => void
+}) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', padding: '11px 14px',
@@ -459,6 +479,25 @@ function PanelHeader({
           </button>
         ))}
       </div>
+
+      {/* Settings button */}
+      <button
+        onClick={onSettingsClick}
+        title="Settings"
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: showSettings ? t.accent : t.textTertiary,
+          display: 'flex', padding: 4, borderRadius: 6,
+          transition: 'color 0.12s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = t.accent)}
+        onMouseLeave={(e) => (e.currentTarget.style.color = showSettings ? t.accent : t.textTertiary)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
 
       {/* Logout button */}
       <button
@@ -1159,6 +1198,84 @@ function InputBar({
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Settings view ─────────────────────────────────────────────────────────
+
+function SettingsView({ t, onClose }: { t: Tokens; onClose: () => void }) {
+  const [url, setUrl] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    getBaseUrl().then(setUrl)
+  }, [])
+
+  const handleSave = async () => {
+    const trimmed = url.trim()
+    if (!trimmed) return
+    await setBaseUrl(trimmed)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: SANS }}>Settings</span>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: t.textTertiary, fontSize: 18, lineHeight: 1, padding: '0 2px',
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Server URL */}
+      <div>
+        <label style={{
+          fontSize: 11, fontWeight: 600, color: t.textSecondary,
+          fontFamily: SANS, display: 'block', marginBottom: 5,
+        }}>
+          Server URL
+        </label>
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => { setUrl(e.target.value); setSaved(false) }}
+          placeholder="http://localhost:8000"
+          style={{
+            width: '100%', padding: '9px 12px', borderRadius: 8,
+            border: `1px solid ${t.border}`, background: t.inputBg,
+            color: t.text, fontSize: 13, fontFamily: SANS,
+            outline: 'none', boxSizing: 'border-box',
+          } as React.CSSProperties}
+        />
+        <p style={{ fontSize: 11, color: t.textTertiary, fontFamily: SANS, marginTop: 5, marginBottom: 16 }}>
+          Base URL of the backend. Change to point to a remote server.
+        </p>
+        <button
+          onClick={handleSave}
+          disabled={!url.trim()}
+          style={{
+            padding: '8px 18px', borderRadius: 8,
+            border: saved ? `1px solid ${t.accentBorder}` : 'none',
+            background: saved ? t.accentSoft : t.accent,
+            color: saved ? t.accent : '#fff',
+            fontSize: 13, fontWeight: 600, fontFamily: SANS,
+            cursor: url.trim() ? 'pointer' : 'not-allowed',
+            opacity: url.trim() ? 1 : 0.6,
+            transition: 'all 0.15s',
+          } as React.CSSProperties}
+        >
+          {saved ? 'Saved ✓' : 'Save'}
         </button>
       </div>
     </div>

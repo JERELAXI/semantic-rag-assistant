@@ -1,4 +1,19 @@
-const BASE_URL = 'http://localhost:8000'
+// ── Base URL — reads from storage, falls back to localhost ────────────────
+
+let cachedBaseUrl: string | null = null
+
+export async function getBaseUrl(): Promise<string> {
+  if (cachedBaseUrl !== null) return cachedBaseUrl
+  const r = await storageGet(['api_url'])
+  cachedBaseUrl = (r.api_url as string | undefined)?.replace(/\/+$/, '') || 'http://localhost:8000'
+  return cachedBaseUrl
+}
+
+export async function setBaseUrl(url: string): Promise<void> {
+  const normalized = url.trim().replace(/\/+$/, '')
+  cachedBaseUrl = normalized
+  await storageSet({ api_url: normalized })
+}
 
 // ── chrome.storage helpers ────────────────────────────────────────────────
 
@@ -42,15 +57,15 @@ export async function apiFetch(
   options: RequestInit = {},
   _retry = true,
 ): Promise<Response> {
-  const tokens = await getTokens()
+  const [tokens, base] = await Promise.all([getTokens(), getBaseUrl()])
 
   const headers = new Headers(options.headers as HeadersInit | undefined)
   if (tokens.access_token) headers.set('Authorization', `Bearer ${tokens.access_token}`)
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
+  const res = await fetch(`${base}${path}`, { ...options, headers })
 
   if (res.status === 401 && _retry && tokens.refresh_token) {
-    const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
+    const refreshRes = await fetch(`${base}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: tokens.refresh_token }),
@@ -70,7 +85,8 @@ export async function apiFetch(
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 export async function login(email: string, password: string) {
-  const res = await fetch(`${BASE_URL}/auth/login`, {
+  const base = await getBaseUrl()
+  const res = await fetch(`${base}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),

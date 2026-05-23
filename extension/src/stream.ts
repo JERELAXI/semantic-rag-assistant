@@ -1,6 +1,4 @@
-import { getTokens } from './api'
-
-const BASE_URL = 'http://localhost:8000'
+import { getBaseUrl, getTokens } from './api'
 
 export interface Citation {
   chunk_id: string
@@ -17,9 +15,9 @@ export async function* streamMessage(
   searchMode = 'hybrid',
   topK = 5,
 ): AsyncGenerator<SSEEvent, void, unknown> {
-  const tokens = await getTokens()
+  const [tokens, base] = await Promise.all([getTokens(), getBaseUrl()])
 
-  const res = await fetch(`${BASE_URL}/chat/sessions/${sessionId}/messages`, {
+  const res = await fetch(`${base}/chat/sessions/${sessionId}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
