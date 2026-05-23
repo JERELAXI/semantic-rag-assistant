@@ -9,7 +9,7 @@ mcp = FastMCP("semantic-rag-assistant")
 
 
 def create_mcp_app() -> Starlette:
-    transport = SseServerTransport("/mcp/messages/")
+    transport = SseServerTransport("/messages/")
 
     async def handle_sse(request):
         async with transport.connect_sse(
