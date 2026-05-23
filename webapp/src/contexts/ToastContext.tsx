@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useState } from 'react';
+import { generateId } from '../utils/id';
 import { createPortal } from 'react-dom';
 import { ToastContainer, type ToastItem } from '../components/UI/Toast';
 
@@ -16,7 +17,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    const id = crypto.randomUUID();
+    const id = generateId();
     setToasts((prev) => [...prev, { id, type, message }]);
   }, []);
 
