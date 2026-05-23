@@ -22,6 +22,7 @@ from src.documents.router import router as documents_router
 from src.knowledge_bases.router import router as kb_router
 from src.mcp_server.server import create_mcp_app
 from src.organizations.router import router as organizations_router
+from src.settings.router import router as settings_router
 
 
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -56,6 +57,7 @@ app.include_router(organizations_router)
 app.include_router(kb_router)
 app.include_router(documents_router)
 app.include_router(chat_router)
+app.include_router(settings_router)
 app.mount("/mcp", create_mcp_app())
 
 

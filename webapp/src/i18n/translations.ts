@@ -109,12 +109,17 @@ const uk: Record<string, string> = {
   'settings.topK.label': 'Top K — {value}',
   'settings.topK.desc': 'Кількість фрагментів, отриманих як контекст',
   'settings.server.title': 'Конфігурація сервера',
-  'settings.server.subtitle': 'Керується через змінні середовища — лише для читання',
+  'settings.server.subtitle': 'Змінюється через API — скидається при перезапуску',
   'settings.embedding.label': 'Провайдер вкладень',
   'settings.embedding.desc': 'Модель для векторизації фрагментів документів',
   'settings.reranker.label': 'NVIDIA Reranker',
   'settings.reranker.desc': 'Крос-кодерне ранжування отриманих фрагментів',
-  'settings.serverNote': 'Налаштовано на сервері через .env',
+  'settings.restart.note': 'Зміни застосовуються до перезапуску сервера',
+  'settings.provider.warning.title': 'Змінити провайдера вкладень?',
+  'settings.provider.warning.body':
+    'Перемикання провайдера вимагає повторного завантаження всіх документів. Наявні вкладення не будуть сумісні з новим провайдером.',
+  'settings.provider.warning.confirm': 'Змінити',
+  'settings.provider.warning.cancel': 'Скасувати',
 
   // ── 404 page ─────────────────────────────────────────────────────────────────
   'notFound.title': 'Сторінку не знайдено',
@@ -322,12 +327,17 @@ const en: Record<string, string> = {
   'settings.topK.label': 'Top K — {value}',
   'settings.topK.desc': 'Number of chunks retrieved as context',
   'settings.server.title': 'Server Configuration',
-  'settings.server.subtitle': 'Managed via environment variables — read-only',
+  'settings.server.subtitle': 'Changed via API — resets on server restart',
   'settings.embedding.label': 'Embedding Provider',
   'settings.embedding.desc': 'Model used to vectorise document chunks',
   'settings.reranker.label': 'NVIDIA Reranker',
   'settings.reranker.desc': 'Cross-encoder reranking of retrieved chunks',
-  'settings.serverNote': 'Configured on server via .env',
+  'settings.restart.note': 'Changes apply until server restart',
+  'settings.provider.warning.title': 'Switch embedding provider?',
+  'settings.provider.warning.body':
+    'Switching provider requires re-uploading all documents. Existing embeddings will not be compatible with the new provider.',
+  'settings.provider.warning.confirm': 'Switch',
+  'settings.provider.warning.cancel': 'Cancel',
 
   // ── 404 page ─────────────────────────────────────────────────────────────────
   'notFound.title': 'Page not found',

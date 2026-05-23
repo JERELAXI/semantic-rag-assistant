@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, Share2, Trash2, UserMinus, X } from 'lucide-react';
+import { ArrowLeft, FileText, Share2, Trash2, UserMinus } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useT, useLang } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
