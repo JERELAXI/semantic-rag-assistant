@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
@@ -30,6 +30,7 @@ from src.chat.service import (
 )
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
+from src.core.rate_limit import limiter
 from src.knowledge_bases.service import check_kb_access
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -128,7 +129,9 @@ async def delete(
 # ── Messages (SSE stream) ──────────────────────────────────────────────────
 
 @router.post("/sessions/{session_id}/messages")
+@limiter.limit("20/minute")
 async def send_message(
+    request: Request,
     session_id: uuid.UUID,
     body: MessageCreate,
     db: AsyncSession = Depends(get_db),

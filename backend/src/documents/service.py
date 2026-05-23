@@ -25,6 +25,20 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "text/markdown": ".md",
 }
 
+# Magic bytes used to verify actual file content matches declared MIME type.
+# text/plain and text/markdown have no fixed magic bytes so they are omitted.
+_MAGIC_BYTES: dict[str, bytes] = {
+    "application/pdf": b"%PDF",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": b"PK\x03\x04",
+}
+
+
+def _verify_magic_bytes(content_type: str, data: bytes) -> bool:
+    magic = _MAGIC_BYTES.get(content_type)
+    if magic is None:
+        return True
+    return data[: len(magic)] == magic
+
 
 async def ingest_document_bytes(
     db: AsyncSession,
@@ -40,6 +54,9 @@ async def ingest_document_bytes(
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise ValueError(f"Unsupported file type: {content_type}. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}")
 
+    if not _verify_magic_bytes(content_type, data):
+        raise ValueError(f"File content does not match declared type: {content_type}")
+
     content_hash = hashlib.sha256(data).hexdigest()
     existing = await db.execute(
         select(Document.id).where(
@@ -54,7 +71,9 @@ async def ingest_document_bytes(
     doc_dir = UPLOAD_DIR / str(doc_id)
     os.makedirs(doc_dir, exist_ok=True)
 
-    safe_filename = filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    # Use only the basename to prevent path traversal (e.g. ../../etc/passwd → passwd).
+    raw_name = filename or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
+    safe_filename = Path(raw_name).name or f"upload{ALLOWED_CONTENT_TYPES[content_type]}"
     file_path = doc_dir / safe_filename
     file_path.write_bytes(data)
 

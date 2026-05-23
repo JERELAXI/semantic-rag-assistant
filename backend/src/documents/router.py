@@ -5,13 +5,14 @@ from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import User
 from src.core.config import settings
 from src.core.database import get_db
 from src.core.dependencies import get_current_user
+from src.core.rate_limit import limiter
 from src.documents.processing import process_document
 from src.documents.schemas import DocumentResponse, DocumentStatus, IngestUrlRequest
 from src.documents.service import (
@@ -41,9 +42,11 @@ async def _to_response(db: AsyncSession, doc) -> DocumentResponse:
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=201)
+@limiter.limit("10/minute")
 async def upload(
+    request: Request,
     file: UploadFile,
-    title: str = Form(...),
+    title: str = Form(..., min_length=1, max_length=255),
     knowledge_base_id: uuid.UUID = Form(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
