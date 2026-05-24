@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTheme } from '../hooks/useTheme';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { useT } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { SEARCH_MODE_KEY, TOP_K_KEY, type SearchMode, getSearchPrefs } from '../hooks/useSearchPrefs';
@@ -10,6 +11,7 @@ export { getSearchPrefs };
 export function SettingsPage() {
   const t = useTheme();
   const tx = useT();
+  const { isMobile } = useIsMobile();
   const [searchMode, setSearchMode] = useState<SearchMode>(
     () => (localStorage.getItem(SEARCH_MODE_KEY) as SearchMode) ?? 'hybrid',
   );
@@ -76,7 +78,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 600 }}>
+    <div style={{ padding: isMobile ? '16px' : '32px 40px', maxWidth: 600 }}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: t.text, fontFamily: FONT, margin: 0 }}>
           {tx('settings.heading')}
@@ -88,15 +90,15 @@ export function SettingsPage() {
 
       <SectionLabel title={tx('settings.search.title')} sub={tx('settings.search.subtitle')} t={t} />
 
-      <SettingRow label={tx('settings.searchMode.label')} desc={tx('settings.searchMode.desc')} isLast={false} t={t}>
-        <div style={{ display: 'flex', gap: 6 }}>
+      <SettingRow label={tx('settings.searchMode.label')} desc={tx('settings.searchMode.desc')} isLast={false} isMobile={isMobile} t={t}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {(['vector', 'fts', 'hybrid'] as SearchMode[]).map((m) => (
             <ModeBtn key={m} label={m} active={searchMode === m} onClick={() => handleSearchMode(m)} t={t} />
           ))}
         </div>
       </SettingRow>
 
-      <SettingRow label={tx('settings.topK.label', { value: topK })} desc={tx('settings.topK.desc')} isLast t={t}>
+      <SettingRow label={tx('settings.topK.label', { value: topK })} desc={tx('settings.topK.desc')} isLast isMobile={isMobile} t={t}>
         <div style={{ width: 180 }}>
           <input
             type="range"
@@ -121,6 +123,7 @@ export function SettingsPage() {
         label={tx('settings.embedding.label')}
         desc={tx('settings.embedding.desc')}
         isLast={false}
+        isMobile={isMobile}
         t={t}
       >
         <div style={{ display: 'flex', gap: 6 }}>
@@ -145,6 +148,7 @@ export function SettingsPage() {
         label={tx('settings.reranker.label')}
         desc={tx('settings.reranker.desc')}
         isLast
+        isMobile={isMobile}
         t={t}
       >
         <Toggle on={rerankerEnabled} disabled={saving} onClick={handleRerankerToggle} t={t} />
@@ -187,21 +191,26 @@ function SectionLabel({ title, sub, t }: { title: string; sub: string; t: Return
 }
 
 function SettingRow({
-  label, desc, isLast, children, t,
+  label, desc, isLast, isMobile, children, t,
 }: {
   label: string;
   desc: string;
   isLast: boolean;
+  isMobile?: boolean;
   children: React.ReactNode;
   t: ReturnType<typeof useTheme>;
 }) {
   return (
     <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      justifyContent: 'space-between',
+      alignItems: isMobile ? 'flex-start' : 'center',
+      gap: isMobile ? 12 : 0,
       padding: '16px 0',
       borderBottom: isLast ? 'none' : `1px solid ${t.borderSubtle}`,
     }}>
-      <div style={{ flex: 1, marginRight: 24 }}>
+      <div style={{ flex: 1, marginRight: isMobile ? 0 : 24 }}>
         <div style={{ fontSize: 14, fontWeight: 500, color: t.text, fontFamily: FONT }}>{label}</div>
         <div style={{ fontSize: 12, color: t.textTri, fontFamily: FONT, marginTop: 3 }}>{desc}</div>
       </div>

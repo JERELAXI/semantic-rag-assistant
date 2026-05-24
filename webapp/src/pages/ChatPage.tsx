@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { generateId } from '../utils/id';
-import { MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
+import { Menu, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { useT, useLang } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { kbApi } from '../api/knowledgeBases';
@@ -37,6 +38,8 @@ export function ChatPage() {
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const [sessionPanelOpen, setSessionPanelOpen] = useState(false);
+  const { isMobile } = useIsMobile();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -196,18 +199,18 @@ export function ChatPage() {
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 
-  return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {/* ── Session panel ── */}
-      <div
-        style={{
-          width: 240, minWidth: 240,
-          borderRight: `1px solid ${t.border}`,
-          background: t.surface,
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
+  const sessionPanel = (
+    <div
+      style={{
+        width: isMobile ? '100%' : 240,
+        minWidth: isMobile ? undefined : 240,
+        borderRight: isMobile ? 'none' : `1px solid ${t.border}`,
+        background: t.surface,
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
+        height: '100%',
+      }}
+    >
         {/* KB selector */}
         <div style={{ padding: '14px 12px', borderBottom: `1px solid ${t.borderSubtle}` }}>
           <label style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -357,27 +360,71 @@ export function ChatPage() {
         </div>
       </div>
 
+  );
+
+  return (
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      <style>{`@keyframes sessionSlideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }`}</style>
+
+      {/* ── Session panel ── */}
+      {isMobile ? (
+        sessionPanelOpen && (
+          <>
+            <div
+              onClick={() => setSessionPanelOpen(false)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200 }}
+            />
+            <div
+              style={{
+                position: 'fixed', left: 0, top: 0, bottom: 0,
+                width: 280, zIndex: 201,
+                animation: 'sessionSlideIn 0.2s ease-out',
+              }}
+            >
+              {sessionPanel}
+            </div>
+          </>
+        )
+      ) : (
+        sessionPanel
+      )}
+
       {/* ── Chat area ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {/* Top bar */}
         <div
           style={{
-            padding: '10px 24px', borderBottom: `1px solid ${t.border}`,
+            padding: isMobile ? '8px 12px' : '10px 24px',
+            borderBottom: `1px solid ${t.border}`,
             display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
           }}
         >
+          {isMobile && (
+            <button
+              onClick={() => setSessionPanelOpen(true)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: t.textSec, display: 'flex', alignItems: 'center',
+                padding: 4, borderRadius: 6, flexShrink: 0,
+              }}
+            >
+              <Menu size={18} />
+            </button>
+          )}
           <span style={{ fontSize: 13, color: t.textTri, fontFamily: FONT }}>{tx('chat.kbbar.label')}</span>
-          <span style={{ fontSize: 13, fontWeight: 500, color: t.text, fontFamily: FONT }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: t.text, fontFamily: FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {activeKb?.name ?? '—'}
           </span>
           <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO }}>
-            {searchPrefs.searchMode} · top {searchPrefs.topK}
-          </span>
+          {!isMobile && (
+            <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, flexShrink: 0 }}>
+              {searchPrefs.searchMode} · top {searchPrefs.topK}
+            </span>
+          )}
         </div>
 
         {/* Messages */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px' : '20px 24px' }}>
           {!activeSessionId ? (
             <EmptyState hasKb={!!selectedKbId} onNewChat={handleNewChat} />
           ) : loadingMsgs ? (
@@ -435,6 +482,7 @@ export function ChatPage() {
           citation={activeCitation.citation}
           index={activeCitation.index}
           onClose={() => setActiveCitation(null)}
+          isMobile={isMobile}
         />
       )}
     </div>

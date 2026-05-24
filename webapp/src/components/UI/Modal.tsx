@@ -31,7 +31,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 440 }: Moda
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16,
+        padding: '16px 12px',
       }}
     >
       <div
@@ -43,6 +43,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 440 }: Moda
           border: `1px solid ${t.border}`,
           boxShadow: '0 8px 32px rgba(0,0,0,0.24)',
           overflow: 'hidden',
+          boxSizing: 'border-box' as const,
         }}
       >
         <div
