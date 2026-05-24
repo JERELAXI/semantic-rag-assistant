@@ -71,14 +71,16 @@ export function LoginPage({ initialMode }: { initialMode?: Mode }) {
   return (
     <div
       style={{
-        height: '100vh',
+        minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         background: t.bg,
+        padding: '24px 16px',
+        boxSizing: 'border-box',
       }}
     >
-      <div style={{ width: 380 }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div

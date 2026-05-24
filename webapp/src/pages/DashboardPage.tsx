@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Database, Trash2, Bell, Check, X } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { useT, useLang } from '../contexts/LangContext';
 import { FONT } from '../styles/theme';
 import { kbApi, KBResponse, KBInvitationResponse } from '../api/knowledgeBases';
@@ -21,6 +22,7 @@ export function DashboardPage() {
   const tx = useT();
   const { lang } = useLang();
   const navigate = useNavigate();
+  const { isMobile } = useIsMobile();
   const { showToast } = useToast();
 
   const [kbs, setKbs] = useState<KBCard[]>([]);
@@ -145,8 +147,15 @@ export function DashboardPage() {
     : 'dashboard.invitations.banner.many';
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1100 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+    <div style={{ padding: isMobile ? '16px' : '32px 40px', maxWidth: 1100 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: isMobile ? 'flex-start' : 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+        justifyContent: 'space-between',
+        gap: isMobile ? 12 : 0,
+        marginBottom: 28,
+      }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: t.text, fontFamily: FONT, margin: 0 }}>
             {tx('dashboard.heading')}
@@ -158,11 +167,12 @@ export function DashboardPage() {
         <button
           onClick={() => { setCreateOpen(true); setCreateError(''); }}
           style={{
-            display: 'flex', alignItems: 'center', gap: 6,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '9px 16px', borderRadius: 8, border: 'none',
             background: t.accent, color: '#fff',
             fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer',
             transition: 'opacity 0.15s',
+            width: isMobile ? '100%' : 'auto',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
           onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -198,7 +208,7 @@ export function DashboardPage() {
       )}
 
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {[1, 2, 3].map((i) => (
             <div key={i} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -236,7 +246,7 @@ export function DashboardPage() {
           </button>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {kbs.map((kb) => (
             <div
               key={kb.id}

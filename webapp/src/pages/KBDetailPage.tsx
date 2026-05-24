@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FileText, Share2, Trash2, UserMinus } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { useT, useLang } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { kbApi, KBResponse, KBShareResponse } from '../api/knowledgeBases';
@@ -20,6 +21,7 @@ export function KBDetailPage() {
   const { lang } = useLang();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const { isMobile } = useIsMobile();
   const { showToast } = useToast();
 
   const [kb, setKb] = useState<KBResponse | null>(null);
@@ -185,7 +187,7 @@ export function KBDetailPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: '32px 40px', maxWidth: 860 }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 40px', maxWidth: 860 }}>
         <Skeleton width={80} height={13} style={{ marginBottom: 24 }} />
         <Skeleton width={200} height={22} style={{ marginBottom: 8 }} />
         <Skeleton width={120} height={12} style={{ marginBottom: 32 }} />
@@ -198,7 +200,7 @@ export function KBDetailPage() {
   }
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 860 }}>
+    <div style={{ padding: isMobile ? '16px' : '32px 40px', maxWidth: 860 }}>
       {/* Back */}
       <button
         onClick={() => navigate('/dashboard')}
@@ -216,7 +218,14 @@ export function KBDetailPage() {
       </button>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'flex-start' : 'flex-start',
+        justifyContent: 'space-between',
+        gap: isMobile ? 12 : 0,
+        marginBottom: 24,
+      }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: t.text, fontFamily: FONT, margin: 0 }}>
@@ -244,16 +253,17 @@ export function KBDetailPage() {
         </div>
 
         {isOwner && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
             <button
               onClick={() => setShareOpen(true)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '7px 12px', borderRadius: 8,
                 border: `1px solid ${t.accentBorder}`,
                 background: t.accentSoft, color: t.accent,
                 fontSize: 12, fontFamily: FONT, cursor: 'pointer',
                 transition: 'opacity 0.12s',
+                flex: isMobile ? 1 : undefined,
               }}
               onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
               onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -264,12 +274,13 @@ export function KBDetailPage() {
             <button
               onClick={() => setDeleteKbOpen(true)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '7px 12px', borderRadius: 8,
                 border: `1px solid ${t.border}`,
                 background: 'none', color: t.danger,
                 fontSize: 12, fontFamily: FONT, cursor: 'pointer',
                 transition: 'border-color 0.12s, background 0.12s',
+                flex: isMobile ? 1 : undefined,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = t.danger;

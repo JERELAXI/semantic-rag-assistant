@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { FileText, Globe, MessageSquare, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../hooks/useTheme';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { useT, useLang } from '../contexts/LangContext';
 import { FONT } from '../styles/theme';
 
@@ -54,6 +55,7 @@ export function LandingPage() {
   const { lang, setLang } = useLang();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { isMobile } = useIsMobile();
   const [hoveredFeature, setHoveredFeature] = useState<number | null>(null);
 
   if (loading) return null;
@@ -91,7 +93,7 @@ export function LandingPage() {
       >
         <div
           style={{
-            maxWidth: 1000, margin: '0 auto', padding: '0 32px',
+            maxWidth: 1000, margin: '0 auto', padding: isMobile ? '0 16px' : '0 32px',
             height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}
         >
@@ -165,7 +167,7 @@ export function LandingPage() {
       </nav>
 
       {/* ── Hero ─────────────────────────────────────────────────────── */}
-      <section style={{ padding: '80px 32px 72px', position: 'relative', overflow: 'hidden' }}>
+      <section style={{ padding: isMobile ? '40px 16px 48px' : '80px 32px 72px', position: 'relative', overflow: 'hidden' }}>
         {/* Animated gradient blobs */}
         <div
           style={{
@@ -205,7 +207,7 @@ export function LandingPage() {
 
             <h1
               style={{
-                fontSize: 44, fontWeight: 800, color: t.text,
+                fontSize: isMobile ? 30 : 44, fontWeight: 800, color: t.text,
                 margin: '0 0 14px', lineHeight: 1.15, letterSpacing: '-0.02em',
               }}
             >
@@ -343,7 +345,7 @@ export function LandingPage() {
       {/* ── Stats ────────────────────────────────────────────────────── */}
       <section
         style={{
-          padding: '48px 32px 56px',
+          padding: isMobile ? '32px 16px 40px' : '48px 32px 56px',
           borderTop: `1px solid ${t.borderSubtle}`,
           borderBottom: `1px solid ${t.borderSubtle}`,
         }}
@@ -351,7 +353,7 @@ export function LandingPage() {
         <div
           style={{
             maxWidth: 1000, margin: '0 auto',
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16,
+            display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16,
           }}
         >
           {STATS.map((s) => (
@@ -394,7 +396,7 @@ export function LandingPage() {
       {/* ── Features ─────────────────────────────────────────────────── */}
       <section
         style={{
-          padding: '72px 32px',
+          padding: isMobile ? '40px 16px' : '72px 32px',
           background: t.surface,
           borderBottom: `1px solid ${t.borderSubtle}`,
         }}
@@ -418,8 +420,8 @@ export function LandingPage() {
                     boxShadow: hovered ? `0 8px 28px ${t.accent}10` : 'none',
                     transition: 'all 0.18s ease',
                     cursor: 'default',
-                    marginLeft: i % 2 === 1 ? 24 : 0,
-                    marginRight: i % 2 === 0 ? 24 : 0,
+                    marginLeft: isMobile ? 0 : (i % 2 === 1 ? 24 : 0),
+                    marginRight: isMobile ? 0 : (i % 2 === 0 ? 24 : 0),
                   }}
                 >
                   <div
@@ -447,17 +449,22 @@ export function LandingPage() {
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────── */}
-      <section style={{ padding: '72px 32px' }}>
+      <section style={{ padding: isMobile ? '40px 16px' : '72px 32px' }}>
         <div style={{ maxWidth: 840, margin: '0 auto' }}>
           <SectionHeading label={tx('landing.how.heading')} t={t} />
           <div
             style={{
-              display: 'flex', alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'wrap',
+              display: 'flex',
+              flexDirection: isMobile ? 'column' : 'row',
+              alignItems: isMobile ? 'center' : 'flex-start',
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+              gap: isMobile ? 24 : 0,
             }}
           >
             {STEPS.map((step, i) => (
-              <div key={step.num} style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ width: 220, textAlign: 'center', padding: '0 12px', flexShrink: 0 }}>
+              <div key={step.num} style={{ display: 'flex', alignItems: 'center', flexDirection: isMobile ? 'column' : 'row' }}>
+                <div style={{ width: isMobile ? '100%' : 220, maxWidth: 280, textAlign: 'center', padding: isMobile ? '0' : '0 12px', flexShrink: 0 }}>
                   <div
                     style={{
                       width: 52, height: 52, borderRadius: '50%',
@@ -478,7 +485,7 @@ export function LandingPage() {
                   </p>
                 </div>
 
-                {i < STEPS.length - 1 && (
+                {i < STEPS.length - 1 && !isMobile && (
                   <div
                     style={{
                       width: 56, height: 2, flexShrink: 0, marginBottom: 48,
@@ -498,7 +505,7 @@ export function LandingPage() {
       {/* ── Tech stack ───────────────────────────────────────────────── */}
       <section
         style={{
-          padding: '40px 32px 56px',
+          padding: isMobile ? '32px 16px 40px' : '40px 32px 56px',
           borderTop: `1px solid ${t.borderSubtle}`,
           background: t.surface,
         }}
@@ -535,7 +542,7 @@ export function LandingPage() {
       {/* ── Footer ───────────────────────────────────────────────────── */}
       <footer
         style={{
-          padding: '28px 32px',
+          padding: isMobile ? '20px 16px' : '28px 32px',
           borderTop: `1px solid ${t.borderSubtle}`,
           textAlign: 'center',
         }}

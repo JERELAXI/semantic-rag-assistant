@@ -32,7 +32,11 @@ const NAV_ITEMS = [
   { path: '/settings', icon: Settings, key: 'nav.settings' },
 ] as const;
 
-export function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export function Sidebar({ onClose }: SidebarProps = {}) {
   const t = useTheme();
   const tx = useT();
   const { lang, setLang } = useLang();
@@ -44,6 +48,11 @@ export function Sidebar() {
   const isActive = (path: string) =>
     pathname === path || pathname.startsWith(path + '/');
 
+  const handleNav = (path: string) => {
+    navigate(path);
+    onClose?.();
+  };
+
   return (
     <div
       style={{
@@ -54,7 +63,9 @@ export function Sidebar() {
         display: 'flex',
         flexDirection: 'column',
         padding: '16px 0',
-        height: '100vh',
+        height: '100%',
+        boxSizing: 'border-box',
+        overflowY: 'auto',
       }}
     >
       {/* Logo */}
@@ -94,7 +105,7 @@ export function Sidebar() {
         return (
           <div
             key={path}
-            onClick={() => navigate(path)}
+            onClick={() => handleNav(path)}
             onMouseEnter={() => setHoveredPath(path)}
             onMouseLeave={() => setHoveredPath(null)}
             style={{
