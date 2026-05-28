@@ -9,7 +9,7 @@ Prerequisites:
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 import pytest_asyncio
@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import src.core.base  # noqa: F401 — registers all models with Base.metadata
 from src.core.config import settings
 from src.core.database import Base, get_db
+from src.core.rate_limit import limiter
 from src.main import app
 
 
@@ -50,6 +51,14 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _disable_rate_limit() -> Generator[None, None, None]:
+    """Disable slowapi rate limiting for all tests — counters are global and bleed between tests."""
+    limiter.enabled = False
+    yield
+    limiter.enabled = True
 
 
 @pytest.fixture(autouse=True)
