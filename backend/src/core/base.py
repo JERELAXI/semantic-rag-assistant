@@ -10,3 +10,4 @@ import src.organizations.models  # noqa: F401
 import src.knowledge_bases.models  # noqa: F401
 import src.documents.models  # noqa: F401
 import src.chat.models  # noqa: F401
+import src.api_keys.models  # noqa: F401

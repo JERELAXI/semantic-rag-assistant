@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
+from src.api_keys.router import router as api_keys_router
 from src.auth.router import router as auth_router
 from src.chat.router import router as chat_router
 from src.core.config import settings
@@ -53,6 +54,7 @@ app.add_middleware(
 app.add_exception_handler(HTTPException, http_exception_handler)
 
 app.include_router(auth_router)
+app.include_router(api_keys_router)
 app.include_router(organizations_router)
 app.include_router(kb_router)
 app.include_router(documents_router)
