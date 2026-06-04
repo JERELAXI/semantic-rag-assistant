@@ -72,6 +72,9 @@ async def search(
         knowledge_base_id=body.knowledge_base_id,
         mode=body.mode,
         top_k=body.top_k,
+        override_hyde=body.override_hyde,
+        override_query_expansion=body.override_query_expansion,
+        override_reranker=body.override_reranker,
     )
 
 

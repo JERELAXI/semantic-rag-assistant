@@ -5,6 +5,7 @@ import { useT } from '../contexts/LangContext';
 import { FONT, MONO } from '../styles/theme';
 import { SEARCH_MODE_KEY, TOP_K_KEY, type SearchMode, getSearchPrefs } from '../hooks/useSearchPrefs';
 import { settingsApi } from '../api/settings';
+import { apiKeysApi, type ApiKeyResponse, type ApiKeyCreated } from '../api/apiKeys';
 
 export { getSearchPrefs };
 
@@ -25,12 +26,44 @@ export function SettingsPage() {
   const [showProviderWarning, setShowProviderWarning] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<string | null>(null);
 
+  const [apiKeys, setApiKeys] = useState<ApiKeyResponse[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+
   useEffect(() => {
     settingsApi.get().then((res) => {
       setProvider(res.data.embedding_provider);
       setRerankerEnabled(res.data.reranker_enabled);
     });
+    apiKeysApi.list().then((res) => setApiKeys(res.data));
   }, []);
+
+  async function handleCreateKey() {
+    if (!newKeyName.trim() || creatingKey) return;
+    setCreatingKey(true);
+    try {
+      const res = await apiKeysApi.create(newKeyName.trim());
+      setCreatedKey(res.data);
+      setNewKeyName('');
+      const listRes = await apiKeysApi.list();
+      setApiKeys(listRes.data);
+    } finally {
+      setCreatingKey(false);
+    }
+  }
+
+  async function handleRevokeKey(id: string) {
+    await apiKeysApi.revoke(id);
+    setApiKeys((prev) => prev.filter((k) => k.id !== id));
+  }
+
+  function handleCopyKey(key: string) {
+    navigator.clipboard.writeText(key);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  }
 
   function handleSearchMode(mode: SearchMode) {
     setSearchMode(mode);
@@ -158,6 +191,117 @@ export function SettingsPage() {
         <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO }}>
           {tx('settings.restart.note')}
         </span>
+      </div>
+
+      <div style={{ height: 32 }} />
+
+      <SectionLabel
+        title="API Keys"
+        sub="Long-lived keys for MCP integrations (Claude Desktop). A key is shown only once — copy it immediately."
+        t={t}
+      />
+
+      {/* Existing keys */}
+      {apiKeys.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {apiKeys.map((k) => (
+            <div key={k.id} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 0', borderBottom: `1px solid ${t.borderSubtle}`,
+            }}>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 500, color: t.text, fontFamily: FONT }}>{k.name}</span>
+                <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, marginLeft: 10 }}>{k.key_prefix}…</span>
+                {k.last_used_at && (
+                  <span style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, marginLeft: 10 }}>
+                    last used {new Date(k.last_used_at).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => handleRevokeKey(k.id)}
+                style={{
+                  padding: '5px 12px', borderRadius: 7, fontSize: 12,
+                  border: `1px solid ${t.border}`, background: 'transparent',
+                  color: t.danger ?? '#E5534B', cursor: 'pointer', fontFamily: FONT,
+                }}
+              >
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* New key revealed */}
+      {createdKey && (
+        <div style={{
+          padding: '14px 16px', borderRadius: 10,
+          border: `1px solid ${t.accent}`, background: t.accentSoft,
+          marginBottom: 16,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: t.accent, fontFamily: FONT, marginBottom: 8 }}>
+            Copy your new API key — it won't be shown again
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <code style={{
+              flex: 1, fontSize: 12, color: t.text, fontFamily: MONO,
+              background: t.inputBg, padding: '8px 12px', borderRadius: 7,
+              border: `1px solid ${t.border}`, wordBreak: 'break-all',
+            }}>
+              {createdKey.key}
+            </code>
+            <button
+              onClick={() => handleCopyKey(createdKey.key)}
+              style={{
+                padding: '8px 14px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+                border: 'none', background: copiedKey ? t.accentSoft : t.accent,
+                color: copiedKey ? t.accent : '#fff', cursor: 'pointer', fontFamily: FONT,
+                flexShrink: 0, transition: 'all 0.15s',
+              }}
+            >
+              {copiedKey ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <button
+            onClick={() => setCreatedKey(null)}
+            style={{
+              marginTop: 10, fontSize: 11, color: t.textTri, fontFamily: FONT,
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            }}
+          >
+            I've copied it, dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Create new key */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="text"
+          value={newKeyName}
+          onChange={(e) => setNewKeyName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleCreateKey()}
+          placeholder="Key name, e.g. Claude Desktop"
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, fontSize: 13,
+            border: `1px solid ${t.border}`, background: t.inputBg,
+            color: t.text, fontFamily: FONT, outline: 'none',
+          }}
+        />
+        <button
+          onClick={handleCreateKey}
+          disabled={!newKeyName.trim() || creatingKey}
+          style={{
+            padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: 'none', background: t.accent, color: '#fff',
+            cursor: !newKeyName.trim() || creatingKey ? 'not-allowed' : 'pointer',
+            fontFamily: FONT, opacity: !newKeyName.trim() || creatingKey ? 0.6 : 1,
+            flexShrink: 0,
+          }}
+        >
+          {creatingKey ? '…' : 'Generate'}
+        </button>
       </div>
 
       {showProviderWarning && (

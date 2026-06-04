@@ -5,7 +5,9 @@ let cachedBaseUrl: string | null = null
 export async function getBaseUrl(): Promise<string> {
   if (cachedBaseUrl !== null) return cachedBaseUrl
   const r = await storageGet(['api_url'])
-  cachedBaseUrl = (r.api_url as string | undefined)?.replace(/\/+$/, '') || 'http://localhost:8000'
+  cachedBaseUrl = (r.api_url as string | undefined)?.replace(/\/+$/, '')
+    || (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '')
+    || 'http://localhost:8000'
   return cachedBaseUrl
 }
 
