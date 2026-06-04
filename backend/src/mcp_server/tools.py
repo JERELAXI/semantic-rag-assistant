@@ -7,15 +7,13 @@ from pathlib import PurePosixPath
 import httpx
 from sqlalchemy import select
 
-from src.api_keys.service import verify_api_key
 from src.chat.retriever import HybridRetriever
 from src.core.database import AsyncSessionLocal
-from src.core.exceptions import AuthError
 from src.documents.models import Chunk, Document
 from src.documents.processing import process_document
 from src.documents.service import ALLOWED_CONTENT_TYPES, ingest_document_bytes
 from src.knowledge_bases.service import check_kb_access, list_knowledge_bases as svc_list_kbs
-from src.mcp_server.server import mcp
+from src.mcp_server.server import get_session_user, mcp
 
 _URL_CONTENT_TYPES: dict[str, str] = {
     ".pdf": "application/pdf",
@@ -25,22 +23,15 @@ _URL_CONTENT_TYPES: dict[str, str] = {
 }
 
 
-async def _get_user(api_key: str, db):
-    try:
-        return await verify_api_key(db, api_key)
-    except AuthError as e:
-        raise ValueError(f"Authentication failed: {e}") from e
-
-
 @mcp.tool()
-async def list_knowledge_bases(api_key: str) -> list[dict]:
+async def list_knowledge_bases() -> list[dict]:
     """List all knowledge bases accessible to the authenticated user.
 
     Returns id, name, description, and permission role for each KB.
     Use the returned 'id' values as knowledge_base_id in other tools.
     """
+    user = get_session_user()
     async with AsyncSessionLocal() as db:
-        user = await _get_user(api_key, db)
         rows = await svc_list_kbs(db, user)
     return [
         {
@@ -58,7 +49,6 @@ async def list_knowledge_bases(api_key: str) -> list[dict]:
 async def search_knowledge_base(
     query: str,
     knowledge_base_id: str,
-    api_key: str,
     mode: str = "hybrid",
     top_k: int = 5,
 ) -> list[dict]:
@@ -67,9 +57,9 @@ async def search_knowledge_base(
     mode: "hybrid" (default), "vector", or "fts".
     Returns a list of matching chunks with content, score, and document context.
     """
+    user = get_session_user()
     kb_id = uuid.UUID(knowledge_base_id)
     async with AsyncSessionLocal() as db:
-        user = await _get_user(api_key, db)
         await check_kb_access(db, kb_id, user)
         retriever = HybridRetriever(db)
         results = await retriever.search(query, kb_id, mode=mode, top_k=top_k)
@@ -87,11 +77,11 @@ async def search_knowledge_base(
 
 
 @mcp.tool()
-async def get_chunk_by_id(chunk_id: str, api_key: str) -> dict:
+async def get_chunk_by_id(chunk_id: str) -> dict:
     """Retrieve full chunk content with document context and metadata by chunk UUID."""
+    user = get_session_user()
     cid = uuid.UUID(chunk_id)
     async with AsyncSessionLocal() as db:
-        user = await _get_user(api_key, db)
         result = await db.execute(
             select(Chunk, Document)
             .join(Document, Chunk.document_id == Document.id)
@@ -117,7 +107,6 @@ async def get_chunk_by_id(chunk_id: str, api_key: str) -> dict:
 async def ingest_document(
     knowledge_base_id: str,
     title: str,
-    api_key: str,
     text_content: str | None = None,
     file_url: str | None = None,
 ) -> dict:
@@ -128,6 +117,8 @@ async def ingest_document(
     """
     if not text_content and not file_url:
         raise ValueError("Either text_content or file_url must be provided")
+
+    user = get_session_user()
 
     if text_content:
         data = text_content.encode("utf-8")
@@ -151,7 +142,6 @@ async def ingest_document(
     kb_id = uuid.UUID(knowledge_base_id)
 
     async with AsyncSessionLocal() as db:
-        user = await _get_user(api_key, db)
         document = await ingest_document_bytes(
             db, user, kb_id, title, content_type, data, filename
         )
