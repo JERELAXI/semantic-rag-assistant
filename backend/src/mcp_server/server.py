@@ -7,49 +7,52 @@ from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Mount, Route
+from starlette.routing import Mount
 
 from src.auth.models import User
 
 mcp = FastMCP("semantic-rag-assistant")
 
-# Holds the authenticated user for the duration of one SSE session.
-# ContextVar propagates into all coroutines spawned within the SSE handler.
 _session_user: ContextVar[User | None] = ContextVar("session_user", default=None)
 
 
 def get_session_user() -> User:
     user = _session_user.get()
     if user is None:
-        raise ValueError("Not authenticated — set api_key in the MCP server URL query parameter")
+        raise ValueError("Not authenticated — add ?api_key=srag_... to the MCP server URL")
     return user
 
 
 def create_mcp_app() -> Starlette:
-    # Path must match the external route so the client POSTs to /mcp/messages/
-    # which nginx routes correctly via the /mcp/ location block.
-    transport = SseServerTransport("/mcp/messages/")
+    # Use /api/mcp/messages/ — same nginx location as SSE (/api/mcp/),
+    # avoiding any routing mismatch with the /mcp/ location block.
+    transport = SseServerTransport("/api/mcp/messages/")
 
-    async def handle_sse(request: Request):
+    async def sse_endpoint(scope, receive, send):
+        """Raw ASGI handler — avoids Starlette expecting a Response return value."""
         from src.api_keys.service import verify_api_key
         from src.core.database import AsyncSessionLocal
         from src.core.exceptions import AuthError
 
+        request = Request(scope, receive, send)
         api_key = request.query_params.get("api_key", "")
+
         if not api_key:
-            return Response("api_key query parameter is required", status_code=401)
+            resp = Response("api_key query parameter is required", status_code=401)
+            await resp(scope, receive, send)
+            return
 
         async with AsyncSessionLocal() as db:
             try:
                 user = await verify_api_key(db, api_key)
             except AuthError:
-                return Response("Invalid or revoked API key", status_code=401)
+                resp = Response("Invalid or revoked API key", status_code=401)
+                await resp(scope, receive, send)
+                return
 
         token = _session_user.set(user)
         try:
-            async with transport.connect_sse(
-                request.scope, request.receive, request._send
-            ) as streams:
+            async with transport.connect_sse(scope, receive, send) as streams:
                 await mcp._mcp_server.run(
                     streams[0],
                     streams[1],
@@ -59,6 +62,6 @@ def create_mcp_app() -> Starlette:
             _session_user.reset(token)
 
     return Starlette(routes=[
-        Route("/sse", endpoint=handle_sse),
+        Mount("/sse", app=sse_endpoint),
         Mount("/messages/", app=transport.handle_post_message),
     ])
