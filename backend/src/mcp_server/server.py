@@ -7,7 +7,7 @@ from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
 
 from src.auth.models import User
 
@@ -24,35 +24,33 @@ def get_session_user() -> User:
 
 
 def create_mcp_app() -> Starlette:
-    # Use /api/mcp/messages/ — same nginx location as SSE (/api/mcp/),
-    # avoiding any routing mismatch with the /mcp/ location block.
-    transport = SseServerTransport("/api/mcp/messages/")
+    # MCP SDK builds the endpoint URI it advertises to the client as
+    # `scope["root_path"] + self._endpoint`. We're mounted under `/mcp` in
+    # FastAPI, so root_path is `/mcp` and the advertised endpoint becomes
+    # `/mcp/messages/`. Using Mount("/sse", ...) would add another `/sse`
+    # segment to root_path and break the URL — use Route() instead.
+    transport = SseServerTransport("/messages/")
 
-    async def sse_endpoint(scope, receive, send):
-        """Raw ASGI handler — avoids Starlette expecting a Response return value."""
+    async def handle_sse(request: Request) -> Response:
         from src.api_keys.service import verify_api_key
         from src.core.database import AsyncSessionLocal
         from src.core.exceptions import AuthError
 
-        request = Request(scope, receive, send)
         api_key = request.query_params.get("api_key", "")
-
         if not api_key:
-            resp = Response("api_key query parameter is required", status_code=401)
-            await resp(scope, receive, send)
-            return
+            return Response("api_key query parameter is required", status_code=401)
 
         async with AsyncSessionLocal() as db:
             try:
                 user = await verify_api_key(db, api_key)
             except AuthError:
-                resp = Response("Invalid or revoked API key", status_code=401)
-                await resp(scope, receive, send)
-                return
+                return Response("Invalid or revoked API key", status_code=401)
 
         token = _session_user.set(user)
         try:
-            async with transport.connect_sse(scope, receive, send) as streams:
+            async with transport.connect_sse(
+                request.scope, request.receive, request._send
+            ) as streams:
                 await mcp._mcp_server.run(
                     streams[0],
                     streams[1],
@@ -60,8 +58,9 @@ def create_mcp_app() -> Starlette:
                 )
         finally:
             _session_user.reset(token)
+        return Response()
 
     return Starlette(routes=[
-        Mount("/sse", app=sse_endpoint),
+        Route("/sse", endpoint=handle_sse, methods=["GET"]),
         Mount("/messages/", app=transport.handle_post_message),
     ])
