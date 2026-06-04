@@ -60,9 +60,24 @@ export function SettingsPage() {
   }
 
   function handleCopyKey(key: string) {
-    navigator.clipboard.writeText(key);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(key).catch(() => fallbackCopy(key));
+    } else {
+      fallbackCopy(key);
+    }
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2000);
+  }
+
+  function fallbackCopy(text: string) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
   }
 
   function handleSearchMode(mode: SearchMode) {
@@ -196,8 +211,8 @@ export function SettingsPage() {
       <div style={{ height: 32 }} />
 
       <SectionLabel
-        title="API Keys"
-        sub="Long-lived keys for MCP integrations (Claude Desktop). A key is shown only once — copy it immediately."
+        title={tx('settings.apiKeys.title')}
+        sub={tx('settings.apiKeys.subtitle')}
         t={t}
       />
 
@@ -214,7 +229,7 @@ export function SettingsPage() {
                 <span style={{ fontSize: 11, color: t.textTri, fontFamily: MONO, marginLeft: 10 }}>{k.key_prefix}…</span>
                 {k.last_used_at && (
                   <span style={{ fontSize: 11, color: t.textTri, fontFamily: FONT, marginLeft: 10 }}>
-                    last used {new Date(k.last_used_at).toLocaleDateString()}
+                    {tx('settings.apiKeys.lastUsed')} {new Date(k.last_used_at).toLocaleDateString()}
                   </span>
                 )}
               </div>
@@ -226,7 +241,7 @@ export function SettingsPage() {
                   color: t.danger ?? '#E5534B', cursor: 'pointer', fontFamily: FONT,
                 }}
               >
-                Revoke
+                {tx('settings.apiKeys.revoke')}
               </button>
             </div>
           ))}
@@ -241,7 +256,7 @@ export function SettingsPage() {
           marginBottom: 16,
         }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: t.accent, fontFamily: FONT, marginBottom: 8 }}>
-            Copy your new API key — it won't be shown again
+            {tx('settings.apiKeys.copyWarning')}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <code style={{
@@ -260,7 +275,7 @@ export function SettingsPage() {
                 flexShrink: 0, transition: 'all 0.15s',
               }}
             >
-              {copiedKey ? 'Copied!' : 'Copy'}
+              {copiedKey ? tx('settings.apiKeys.copied') : tx('settings.apiKeys.copy')}
             </button>
           </div>
           <button
@@ -270,7 +285,7 @@ export function SettingsPage() {
               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
             }}
           >
-            I've copied it, dismiss
+            {tx('settings.apiKeys.dismiss')}
           </button>
         </div>
       )}
@@ -282,7 +297,7 @@ export function SettingsPage() {
           value={newKeyName}
           onChange={(e) => setNewKeyName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreateKey()}
-          placeholder="Key name, e.g. Claude Desktop"
+          placeholder={tx('settings.apiKeys.namePlaceholder')}
           style={{
             flex: 1, padding: '9px 12px', borderRadius: 8, fontSize: 13,
             border: `1px solid ${t.border}`, background: t.inputBg,
@@ -300,7 +315,7 @@ export function SettingsPage() {
             flexShrink: 0,
           }}
         >
-          {creatingKey ? '…' : 'Generate'}
+          {creatingKey ? tx('settings.apiKeys.generating') : tx('settings.apiKeys.generate')}
         </button>
       </div>
 
