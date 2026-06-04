@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.chat.reranker import rerank
 from src.chat.schemas import SearchResult
 from src.core.config import settings
 from src.core.embeddings import embed_query, embed_texts
@@ -170,10 +171,11 @@ class HybridRetriever:
             logger.warning("Query expansion failed (falling back to single query): %s", exc)
             return []
 
-    async def _embed_for_vector(self, query: str) -> list[float]:
+    async def _embed_for_vector(self, query: str, override_hyde: bool | None = None) -> list[float]:
         """Embed via HyDE (hypothetical answer) when enabled, else embed the raw query."""
+        use_hyde = override_hyde if override_hyde is not None else settings.hyde_enabled
         text_to_embed = query
-        if settings.hyde_enabled:
+        if use_hyde:
             hypothetical = await self.generate_hypothetical_answer(query)
             if hypothetical:
                 text_to_embed = hypothetical
@@ -185,8 +187,9 @@ class HybridRetriever:
         knowledge_base_id: uuid.UUID,
         top_k: int = 5,
         candidate_pool: int = _DEFAULT_CANDIDATE_POOL,
+        override_hyde: bool | None = None,
     ) -> list[SearchResult]:
-        embedding = await self._embed_for_vector(query)
+        embedding = await self._embed_for_vector(query, override_hyde)
 
         vector_results = await self.vector_search(embedding, knowledge_base_id, candidate_pool)
         fts_results = await self.fts_search(query, knowledge_base_id, candidate_pool)
@@ -199,6 +202,7 @@ class HybridRetriever:
         knowledge_base_id: uuid.UUID,
         top_k: int,
         candidate_pool: int = _DEFAULT_CANDIDATE_POOL,
+        override_hyde: bool | None = None,
     ) -> list[SearchResult]:
         """Run hybrid search for the original query + expanded variants, merge by chunk_id.
 
@@ -208,8 +212,9 @@ class HybridRetriever:
           3. All vector + FTS searches in parallel
         HyDE is applied to the original query only; variants ride raw embeddings.
         """
+        use_hyde = override_hyde if override_hyde is not None else settings.hyde_enabled
         expand_task = self.expand_query(query)
-        hyde_task = self.generate_hypothetical_answer(query) if settings.hyde_enabled else _empty_str()
+        hyde_task = self.generate_hypothetical_answer(query) if use_hyde else _empty_str()
         variants, hypothetical = await asyncio.gather(expand_task, hyde_task)
 
         all_queries = [query, *variants]
@@ -240,16 +245,30 @@ class HybridRetriever:
         knowledge_base_id: uuid.UUID,
         mode: str = "hybrid",
         top_k: int = 5,
+        override_hyde: bool | None = None,
+        override_query_expansion: bool | None = None,
+        override_reranker: bool | None = None,
     ) -> list[SearchResult]:
+        use_query_expansion = override_query_expansion if override_query_expansion is not None else settings.query_expansion_enabled
+        use_reranker = override_reranker if override_reranker is not None else settings.reranker_enabled
+
+        # Pull a larger candidate pool when reranking so the reranker has more to score over
+        pool = max(top_k * 4, _DEFAULT_CANDIDATE_POOL) if use_reranker else top_k
+
         if mode == "vector":
-            embedding = await self._embed_for_vector(query)
-            return await self.vector_search(embedding, knowledge_base_id, top_k)
-        if mode == "fts":
-            return await self.fts_search(query, knowledge_base_id, top_k)
-        # Hybrid mode — apply multi-query expansion if enabled
-        if settings.query_expansion_enabled:
-            return await self._multi_query_hybrid(query, knowledge_base_id, top_k)
-        return await self.hybrid_search(query, knowledge_base_id, top_k)
+            embedding = await self._embed_for_vector(query, override_hyde)
+            results = await self.vector_search(embedding, knowledge_base_id, pool)
+        elif mode == "fts":
+            results = await self.fts_search(query, knowledge_base_id, pool)
+        elif use_query_expansion:
+            results = await self._multi_query_hybrid(query, knowledge_base_id, pool, override_hyde=override_hyde)
+        else:
+            results = await self.hybrid_search(query, knowledge_base_id, pool, override_hyde=override_hyde)
+
+        if use_reranker:
+            results = await rerank(query, results, force=True)
+
+        return results[:top_k]
 
 
 def _rrf_fuse(

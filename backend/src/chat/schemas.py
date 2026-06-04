@@ -14,6 +14,10 @@ class SearchRequest(BaseModel):
     knowledge_base_id: uuid.UUID
     mode: Literal["vector", "fts", "hybrid"] = "hybrid"
     top_k: int = Field(5, ge=1, le=50)
+    # Per-request feature overrides — None means "use global settings"
+    override_hyde: bool | None = None
+    override_query_expansion: bool | None = None
+    override_reranker: bool | None = None
 
 
 class SearchResult(BaseModel):

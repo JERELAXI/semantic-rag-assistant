@@ -18,8 +18,10 @@ _TIMEOUT = 30.0
 async def rerank(
     query: str,
     results: list[SearchResult],
+    *,
+    force: bool = False,
 ) -> list[SearchResult]:
-    if not settings.reranker_enabled or not results:
+    if not (force or settings.reranker_enabled) or not results:
         return results
 
     try:
