@@ -25,13 +25,15 @@ _DEFAULT_CANDIDATE_POOL = 20
 
 _HYDE_PROMPT = (
     "Given the question below, write a short paragraph that would be a perfect answer "
-    "found in a document. Do not say 'I think' or 'The answer is'. Just write the content "
+    "found in a document. Respond in the same language as the question. "                                                                                         
+    "Do not say 'I think' or 'The answer is'. Just write the content "
     "as if you're reading it from the actual document.\n\nQuestion: {query}"
 )
 
 _EXPAND_PROMPT = (
     "Generate 3 alternative search queries for this question. Use different keywords and "
-    "phrasing. One per line, no numbering.\n\nQuestion: {query}"
+    "phrasing. Respond in the same language as the question. "                                                                                             
+    "One per line, no numbering.\n\nQuestion: {query}"
 )
 
 # Matches alphanumeric/underscore runs (Unicode-aware) — anything else becomes a separator.
