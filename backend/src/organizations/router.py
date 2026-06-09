@@ -14,10 +14,20 @@ from src.organizations.service import (
     delete_organization,
     get_organization,
     invite_member,
+    list_user_organizations,
     remove_member,
 )
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
+
+
+@router.get("", response_model=list[OrgResponse])
+async def list_orgs(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[OrgResponse]:
+    orgs = await list_user_organizations(db, current_user)
+    return [OrgResponse.model_validate(o) for o in orgs]
 
 
 @router.post("", response_model=OrgResponse, status_code=201)
@@ -56,7 +66,7 @@ async def invite(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MemberResponse:
-    member = await invite_member(db, org_id, current_user, body.user_id, body.role)
+    member = await invite_member(db, org_id, current_user, body.email, body.role)
     return MemberResponse.model_validate(member)
 
 

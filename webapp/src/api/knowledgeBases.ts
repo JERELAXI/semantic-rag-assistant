@@ -33,11 +33,12 @@ export interface KBInvitationResponse {
 
 export const kbApi = {
   list: () => api.get<KBResponse[]>('/knowledge-bases'),
-  create: (name: string, description?: string) =>
+  create: (name: string, description?: string, orgId?: string) =>
     api.post<KBResponse>('/knowledge-bases', {
       name,
       description: description || null,
-      owner_type: 'user',
+      owner_type: orgId ? 'organization' : 'user',
+      ...(orgId ? { owner_id: orgId } : {}),
     }),
   get: (id: string) => api.get<KBResponse>(`/knowledge-bases/${id}`),
   delete: (id: string) => api.delete(`/knowledge-bases/${id}`),
