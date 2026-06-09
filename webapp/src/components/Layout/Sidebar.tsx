@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, LogOut, MessageSquare, Settings } from 'lucide-react';
+import { Building2, LayoutDashboard, LogOut, MessageSquare, Settings } from 'lucide-react';
 
 function GraphIcon({ size = 16, color }: { size?: number; color: string }) {
   return (
@@ -29,6 +29,7 @@ import { FONT } from '../../styles/theme';
 const NAV_ITEMS = [
   { path: '/dashboard', icon: LayoutDashboard, key: 'nav.knowledgeBases' },
   { path: '/chat', icon: MessageSquare, key: 'nav.chat' },
+  { path: '/organizations', icon: Building2, key: 'nav.organizations' },
   { path: '/settings', icon: Settings, key: 'nav.settings' },
 ] as const;
 

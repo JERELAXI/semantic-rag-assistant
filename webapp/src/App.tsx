@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { KBDetailPage } from './pages/KBDetailPage';
 import { ChatPage } from './pages/ChatPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { OrganizationsPage } from './pages/OrganizationsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/kb/:id" element={<KBDetailPage />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/organizations" element={<OrganizationsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Route>
             </Route>

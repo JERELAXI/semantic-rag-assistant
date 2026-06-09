@@ -76,23 +76,37 @@ async def delete_organization(db: AsyncSession, org_id: uuid.UUID, user: User) -
     await db.commit()
 
 
+async def list_user_organizations(db: AsyncSession, user: User) -> list[Organization]:
+    result = await db.execute(
+        select(Organization)
+        .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+        .where(OrganizationMember.user_id == user.id)
+        .options(selectinload(Organization.members))
+        .order_by(Organization.created_at.desc())
+    )
+    return list(result.scalars().unique().all())
+
+
 async def invite_member(
     db: AsyncSession,
     org_id: uuid.UUID,
     user: User,
-    invitee_id: uuid.UUID,
+    email: str,
     role: str,
 ) -> OrganizationMember:
     await _require_owner(db, org_id, user)
 
-    invitee = await db.get(User, invitee_id)
+    result = await db.execute(select(User).where(User.email == email))
+    invitee = result.scalar_one_or_none()
     if invitee is None:
-        raise NotFoundError("User not found")
+        raise NotFoundError(f"No user found with email '{email}'")
+    if invitee.id == user.id:
+        raise ConflictError("Cannot invite yourself")
 
-    if await _get_member(db, org_id, invitee_id) is not None:
+    if await _get_member(db, org_id, invitee.id) is not None:
         raise ConflictError("User is already a member of this organization")
 
-    member = OrganizationMember(organization_id=org_id, user_id=invitee_id, role=role)
+    member = OrganizationMember(organization_id=org_id, user_id=invitee.id, role=role)
     db.add(member)
     await db.commit()
     await db.refresh(member)

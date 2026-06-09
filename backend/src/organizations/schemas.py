@@ -11,8 +11,8 @@ class OrgCreate(BaseModel):
 
 
 class MemberInvite(BaseModel):
-    user_id: uuid.UUID
-    role: str = Field("member", pattern="^(owner|admin|member)$")
+    email: str = Field(..., min_length=1, max_length=255)
+    role: str = Field("member", pattern="^(owner|member)$")
 
 
 class MemberResponse(BaseModel):

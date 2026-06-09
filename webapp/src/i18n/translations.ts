@@ -4,8 +4,33 @@ const uk: Record<string, string> = {
   // ── Navigation ──────────────────────────────────────────────────────────────
   'nav.knowledgeBases': 'Бази знань',
   'nav.chat': 'Чат',
+  'nav.organizations': 'Організації',
   'nav.settings': 'Налаштування',
   'nav.signOut': 'Вийти',
+
+  // ── Organizations page ───────────────────────────────────────────────────────
+  'orgs.heading': 'Організації',
+  'orgs.subtitle': 'Керуйте командами та спільними базами знань',
+  'orgs.new': 'Нова організація',
+  'orgs.members': 'учасників',
+  'orgs.membersLabel': 'Учасники',
+  'orgs.you': 'ви',
+  'orgs.role.owner': 'Власник',
+  'orgs.role.member': 'Учасник',
+  'orgs.invite.label': 'Запросити учасника',
+  'orgs.invite.placeholder': 'colleague@example.com',
+  'orgs.invite.btn': 'Запросити',
+  'orgs.createKb': 'Створити БЗ для організації',
+  'orgs.kbModal.title': 'Нова база знань організації',
+  'orgs.empty.title': 'Організацій ще немає',
+  'orgs.empty.subtitle': 'Створіть організацію для командного доступу до баз знань',
+  'orgs.empty.create': 'Створити організацію',
+  'orgs.create.title': 'Нова організація',
+  'orgs.create.nameLabel': 'Назва *',
+  'orgs.create.namePlaceholder': 'напр. Команда розробки',
+  'orgs.create.submit': 'Створити',
+  'orgs.delete.title': 'Видалити організацію',
+  'orgs.delete.message': 'Видалити "{name}"? Всі бази знань організації буде видалено. Цю дію неможливо скасувати.',
 
   // ── Permissions (dynamic API values) ────────────────────────────────────────
   'permission.viewer': 'Переглядач',
@@ -228,14 +253,48 @@ const uk: Record<string, string> = {
   'toast.sessionRenameFailed': 'Не вдалося перейменувати розмову',
   'toast.sessionDeleteFailed': 'Не вдалося видалити розмову',
   'toast.streamFailed': 'Помилка потокової передачі — спробуйте ще раз.',
+  'toast.orgsLoadFailed': 'Не вдалося завантажити організації',
+  'toast.orgCreated': 'Організацію створено',
+  'toast.orgCreateFailed': 'Не вдалося створити організацію',
+  'toast.orgDeleted': '"{name}" видалено',
+  'toast.orgDeleteFailed': 'Не вдалося видалити організацію',
+  'toast.orgInvited': 'Запрошення надіслано',
+  'toast.orgInviteFailed': 'Не вдалося запросити користувача',
+  'toast.orgMemberRemoved': 'Учасника видалено',
+  'toast.orgMemberRemoveFailed': 'Не вдалося видалити учасника',
 };
 
 const en: Record<string, string> = {
   // ── Navigation ──────────────────────────────────────────────────────────────
   'nav.knowledgeBases': 'Knowledge Bases',
   'nav.chat': 'Chat',
+  'nav.organizations': 'Organizations',
   'nav.settings': 'Settings',
   'nav.signOut': 'Sign out',
+
+  // ── Organizations page ───────────────────────────────────────────────────────
+  'orgs.heading': 'Organizations',
+  'orgs.subtitle': 'Manage teams and shared knowledge bases',
+  'orgs.new': 'New organization',
+  'orgs.members': 'members',
+  'orgs.membersLabel': 'Members',
+  'orgs.you': 'you',
+  'orgs.role.owner': 'Owner',
+  'orgs.role.member': 'Member',
+  'orgs.invite.label': 'Invite member',
+  'orgs.invite.placeholder': 'colleague@example.com',
+  'orgs.invite.btn': 'Invite',
+  'orgs.createKb': 'Create KB for organization',
+  'orgs.kbModal.title': 'New Organization Knowledge Base',
+  'orgs.empty.title': 'No organizations yet',
+  'orgs.empty.subtitle': 'Create an organization for team access to knowledge bases',
+  'orgs.empty.create': 'Create organization',
+  'orgs.create.title': 'New Organization',
+  'orgs.create.nameLabel': 'Name *',
+  'orgs.create.namePlaceholder': 'e.g. Development Team',
+  'orgs.create.submit': 'Create',
+  'orgs.delete.title': 'Delete Organization',
+  'orgs.delete.message': 'Delete "{name}"? All organization knowledge bases will be removed. This action cannot be undone.',
 
   // ── Permissions ──────────────────────────────────────────────────────────────
   'permission.viewer': 'Viewer',
@@ -457,6 +516,15 @@ const en: Record<string, string> = {
   'toast.sessionRenameFailed': 'Failed to rename session',
   'toast.sessionDeleteFailed': 'Failed to delete session',
   'toast.streamFailed': 'Streaming failed — please try again.',
+  'toast.orgsLoadFailed': 'Failed to load organizations',
+  'toast.orgCreated': 'Organization created',
+  'toast.orgCreateFailed': 'Failed to create organization',
+  'toast.orgDeleted': '"{name}" deleted',
+  'toast.orgDeleteFailed': 'Failed to delete organization',
+  'toast.orgInvited': 'Invitation sent',
+  'toast.orgInviteFailed': 'Failed to invite user',
+  'toast.orgMemberRemoved': 'Member removed',
+  'toast.orgMemberRemoveFailed': 'Failed to remove member',
 };
 
 export const translations: Record<Lang, Record<string, string>> = { uk, en };
